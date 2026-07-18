@@ -1,0 +1,56 @@
+import {
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_700Bold,
+} from '@expo-google-fonts/dm-sans';
+import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
+import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { useFonts } from 'expo-font';
+import { Stack } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+import { SQLiteProvider } from 'expo-sqlite';
+import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+
+import { initializeDatabase } from '@/core/database/migrations';
+import '@/core/i18n';
+import { queryClient } from '@/core/query/query-client';
+
+void SplashScreen.preventAutoHideAsync();
+
+export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    DMSans: DMSans_400Regular,
+    DMSansMedium: DMSans_500Medium,
+    DMSansBold: DMSans_700Bold,
+    PlayfairDisplayBold: PlayfairDisplay_700Bold,
+    GeistMonoMedium: GeistMono_500Medium,
+    Handicrafts: require('../../assets/fonts/TheYearofHandicrafts-Regular.otf'),
+    HandicraftsMedium: require('../../assets/fonts/TheYearofHandicrafts-Medium.otf'),
+    HandicraftsSemiBold: require('../../assets/fonts/TheYearofHandicrafts-SemiBold.otf'),
+    HandicraftsBold: require('../../assets/fonts/TheYearofHandicrafts-Bold.otf'),
+    HandicraftsBlack: require('../../assets/fonts/TheYearofHandicrafts-Black.otf'),
+  });
+
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      void SplashScreen.hideAsync();
+    }
+  }, [fontError, fontsLoaded]);
+
+  if (!fontsLoaded && !fontError) {
+    return null;
+  }
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
+        <StatusBar style="auto" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+        </Stack>
+      </SQLiteProvider>
+    </QueryClientProvider>
+  );
+}
