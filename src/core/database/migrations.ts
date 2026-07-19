@@ -66,6 +66,20 @@ export const migrations: readonly Migration[] = [
         ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
     `,
   },
+  {
+    version: 3,
+    statements: `
+      CREATE TABLE IF NOT EXISTS event_outbox_rejections (
+        id TEXT PRIMARY KEY NOT NULL,
+        event_type TEXT NOT NULL,
+        rejection_code INTEGER,
+        created_at TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_event_outbox_rejections_created
+        ON event_outbox_rejections(created_at DESC);
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

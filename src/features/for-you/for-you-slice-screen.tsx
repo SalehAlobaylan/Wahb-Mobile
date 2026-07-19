@@ -37,7 +37,7 @@ function formatDuration(durationSeconds: number): string {
 export function ForYouSliceScreen() {
   const { t } = useTranslation();
   const db = useSQLiteContext();
-  const { identityQuery, sessionQuery } = useForYouSession();
+  const { identityQuery, sessionQuery, fetchNextPage } = useForYouSession();
   const playback = usePlaybackController();
   const [selection, setSelection] = useState<{
     sessionId: string;
@@ -68,6 +68,12 @@ export function ForYouSliceScreen() {
 
   async function selectPosition(nextPosition: number) {
     if (!session || nextPosition < 0 || nextPosition >= session.items.length) {
+      if (session && nextPosition === session.items.length) {
+        const didAppend = await fetchNextPage();
+        if (didAppend) {
+          setSelection({ sessionId: session.id, position: nextPosition });
+        }
+      }
       return;
     }
 
@@ -204,11 +210,15 @@ export function ForYouSliceScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={t('foryou.next')}
-              disabled={position >= session.items.length - 1}
+              disabled={
+                session.cursor === null && position >= session.items.length - 1
+              }
               onPress={() => void selectPosition(position + 1)}
               style={({ pressed }) => [
                 styles.secondaryButton,
-                position >= session.items.length - 1 && styles.disabledButton,
+                session.cursor === null &&
+                  position >= session.items.length - 1 &&
+                  styles.disabledButton,
                 pressed && styles.pressed,
               ]}
             >

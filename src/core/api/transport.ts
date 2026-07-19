@@ -15,6 +15,11 @@ export type RequestOptions = {
   query?: Record<string, QueryValue>;
   body?: unknown;
   authenticated?: boolean;
+  /**
+   * A stable key for a mutating request that may be replayed by the durable
+   * mobile outbox. Never derive this from content, an account, or a URL.
+   */
+  idempotencyKey?: string;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
@@ -119,6 +124,10 @@ export function createTransport(options: TransportOptions): Transport {
           if (token) {
             headers.set('Authorization', `Bearer ${token}`);
           }
+        }
+
+        if (requestOptions.idempotencyKey) {
+          headers.set('Idempotency-Key', requestOptions.idempotencyKey);
         }
 
         const response = await fetchImplementation(url, {

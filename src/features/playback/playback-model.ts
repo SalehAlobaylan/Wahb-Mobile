@@ -18,6 +18,7 @@ export type PlaybackSnapshot = {
   kind: PlaybackKind | null;
   phase: PlaybackPhase;
   rate: number;
+  sourceStage: 'primary' | 'fallback' | null;
   error: 'source_load_failed' | null;
 };
 
@@ -37,6 +38,7 @@ export function createInitialPlaybackSnapshot(): PlaybackSnapshot {
     kind: null,
     phase: 'idle',
     rate: 1,
+    sourceStage: null,
     error: null,
   };
 }

@@ -25,11 +25,20 @@ import {
   type PlaybackItem,
   type PlaybackSnapshot,
 } from './playback-model';
+import {
+  attemptsForSource,
+  remotePlaybackSourceResolver,
+  retryDelayMs,
+} from './source-resolver';
 
 type StartPlaybackOptions = {
   positionSeconds?: number;
   autoplay?: boolean;
 };
+
+function waitForRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, delayMs));
+}
 
 export type PlaybackController = PlaybackSnapshot & {
   videoPlayer: VideoPlayer;
@@ -96,69 +105,103 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       audio.pause();
       audio.clearLockScreenControls();
       video.showNowPlayingNotification = false;
-      setSnapshot({ item, kind, phase: 'loading', rate, error: null });
+      setSnapshot({
+        item,
+        kind,
+        phase: 'loading',
+        rate,
+        sourceStage: null,
+        error: null,
+      });
 
-      try {
-        if (kind === 'video') {
-          await video.replaceAsync({
-            uri: item.playback.url,
-            metadata: {
-              title: item.title,
-              ...(item.sourceName ? { artist: item.sourceName } : {}),
-              ...(item.artworkUrl ? { artwork: item.artworkUrl } : {}),
-            },
-            useCaching: false,
-          });
-          if (request !== operation.current) {
-            return;
-          }
-
-          video.currentTime = positionSeconds;
-          video.playbackRate = rate;
-          video.staysActiveInBackground = true;
-          video.showNowPlayingNotification = true;
-          if (autoplay) {
-            video.play();
-          }
-        } else {
-          audio.replace({ uri: item.playback.url, name: item.title });
-          audio.shouldCorrectPitch = true;
-          audio.setPlaybackRate(rate);
-          audio.setActiveForLockScreen(true, {
-            title: item.title,
-            ...(item.sourceName ? { artist: item.sourceName } : {}),
-            ...(item.artworkUrl ? { artworkUrl: item.artworkUrl } : {}),
-          });
-          await audio.seekTo(positionSeconds);
-          if (request !== operation.current) {
-            return;
-          }
-
-          if (autoplay) {
-            audio.play();
-          }
-        }
-
-        setSnapshot((current) =>
-          current.item?.id === item.id
-            ? {
-                ...current,
-                phase: autoplay ? 'playing' : 'paused',
-                error: null,
+      for (const source of remotePlaybackSourceResolver.resolve(
+        item.playback,
+      )) {
+        for (
+          let attempt = 0;
+          attempt < attemptsForSource(source);
+          attempt += 1
+        ) {
+          try {
+            if (kind === 'video') {
+              await video.replaceAsync({
+                uri: source.url,
+                metadata: {
+                  title: item.title,
+                  ...(item.sourceName ? { artist: item.sourceName } : {}),
+                  ...(item.artworkUrl ? { artwork: item.artworkUrl } : {}),
+                },
+                useCaching: false,
+              });
+              if (request !== operation.current) {
+                return;
               }
-            : current,
-        );
-      } catch (error) {
-        if (request !== operation.current) {
-          return;
+
+              video.currentTime = positionSeconds;
+              video.playbackRate = rate;
+              video.staysActiveInBackground = true;
+              video.showNowPlayingNotification = true;
+              if (autoplay) {
+                video.play();
+              }
+            } else {
+              audio.replace({ uri: source.url, name: item.title });
+              audio.shouldCorrectPitch = true;
+              audio.setPlaybackRate(rate);
+              audio.setActiveForLockScreen(true, {
+                title: item.title,
+                ...(item.sourceName ? { artist: item.sourceName } : {}),
+                ...(item.artworkUrl ? { artworkUrl: item.artworkUrl } : {}),
+              });
+              await audio.seekTo(positionSeconds);
+              if (request !== operation.current) {
+                return;
+              }
+
+              if (autoplay) {
+                audio.play();
+              }
+            }
+
+            setSnapshot((current) =>
+              current.item?.id === item.id
+                ? {
+                    ...current,
+                    phase: autoplay ? 'playing' : 'paused',
+                    sourceStage: source.stage,
+                    error: null,
+                  }
+                : current,
+            );
+            return;
+          } catch (error) {
+            if (request !== operation.current) {
+              return;
+            }
+            captureException('playback_source_attempt_failed', error, {
+              stage: source.stage,
+              attempt: attempt + 1,
+            });
+            if (attempt + 1 < attemptsForSource(source)) {
+              await waitForRetry(retryDelayMs(attempt));
+            }
+          }
         }
-        captureException('playback_source_load_failed', error);
-        setSnapshot((current) =>
-          current.item?.id === item.id
-            ? { ...current, phase: 'failed', error: 'source_load_failed' }
-            : current,
-        );
       }
+
+      if (request !== operation.current) {
+        return;
+      }
+      setSnapshot((current) =>
+        current.item?.id === item.id
+          ? {
+              ...current,
+              phase: 'failed',
+              sourceStage: null,
+              error: 'source_load_failed',
+            }
+          : current,
+      );
     },
     [snapshot.rate],
   );

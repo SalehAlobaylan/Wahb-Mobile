@@ -8,6 +8,7 @@ import { createSessionExpiry, isSessionFresh } from './feed-session-policy';
 type SessionRow = {
   id: string;
   cursor: string | null;
+  status: 'active' | 'exhausted';
   active_position: number;
   created_at: string;
   expires_at: string;
@@ -41,11 +42,11 @@ export async function loadFreshForYouSession(
   now = new Date(),
 ): Promise<FrozenForYouSession | null> {
   const session = await db.getFirstAsync<SessionRow>(
-    `SELECT id, cursor, active_position, created_at, expires_at
+    `SELECT id, cursor, status, active_position, created_at, expires_at
        FROM feed_sessions
       WHERE feed_type = 'foryou'
         AND identity_scope = ?
-        AND status = 'active'
+        AND status IN ('active', 'exhausted')
       ORDER BY created_at DESC
       LIMIT 1`,
     identityScope,
@@ -93,6 +94,99 @@ export async function loadFreshForYouSession(
       `UPDATE feed_sessions SET status = 'expired' WHERE id = ?`,
       session.id,
     );
+    return null;
+  }
+}
+
+/**
+ * Pages are appended to the existing immutable session. Never replace the
+ * loaded order during pagination, even when the live CMS ranking shifts.
+ */
+export async function appendForYouSessionPage(
+  db: SQLiteDatabase,
+  sessionId: string,
+  page: ForYouFeedResponse,
+  now = new Date(),
+): Promise<FrozenForYouSession | null> {
+  const updatedAt = nowIso(now);
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    const session = await transaction.getFirstAsync<{
+      cursor: string | null;
+      status: 'active' | 'exhausted';
+    }>(`SELECT cursor, status FROM feed_sessions WHERE id = ?`, sessionId);
+    if (!session || session.status !== 'active') {
+      return;
+    }
+
+    const rows = await transaction.getAllAsync<{ content_id: string }>(
+      `SELECT content_id FROM feed_session_items WHERE session_id = ?`,
+      sessionId,
+    );
+    const existingIds = new Set(rows.map((row) => row.content_id));
+    const position = await transaction.getFirstAsync<{ next_position: number }>(
+      `SELECT COALESCE(MAX(position), -1) + 1 AS next_position
+         FROM feed_session_items
+        WHERE session_id = ?`,
+      sessionId,
+    );
+    let nextPosition = position?.next_position ?? 0;
+    for (const item of page.items) {
+      if (existingIds.has(item.id)) {
+        continue;
+      }
+      await transaction.runAsync(
+        `INSERT INTO feed_session_items
+          (session_id, position, content_id, snapshot_json, playback_position_ms)
+         VALUES (?, ?, ?, ?, 0)`,
+        sessionId,
+        nextPosition,
+        item.id,
+        JSON.stringify(item),
+      );
+      existingIds.add(item.id);
+      nextPosition += 1;
+    }
+
+    await transaction.runAsync(
+      `UPDATE feed_sessions
+          SET cursor = ?, status = ?, updated_at = ?
+        WHERE id = ?`,
+      page.cursor,
+      page.cursor === null ? 'exhausted' : 'active',
+      updatedAt,
+      sessionId,
+    );
+  });
+
+  const row = await db.getFirstAsync<SessionRow>(
+    `SELECT id, cursor, status, active_position, created_at, expires_at
+       FROM feed_sessions
+      WHERE id = ?`,
+    sessionId,
+  );
+  if (!row || !isSessionFresh(new Date(row.expires_at), now)) {
+    return null;
+  }
+  const items = await db.getAllAsync<SessionItemRow>(
+    `SELECT position, snapshot_json, playback_position_ms
+       FROM feed_session_items
+      WHERE session_id = ?
+      ORDER BY position ASC`,
+    sessionId,
+  );
+  try {
+    return {
+      id: row.id,
+      cursor: row.cursor,
+      activePosition: Math.min(row.active_position, items.length - 1),
+      createdAt: row.created_at,
+      expiresAt: row.expires_at,
+      items: items.map((item) => ({
+        item: JSON.parse(item.snapshot_json) as ForYouItem,
+        playbackPositionMs: item.playback_position_ms,
+      })),
+    } satisfies FrozenForYouSession;
+  } catch {
     return null;
   }
 }
@@ -163,7 +257,7 @@ export async function updateForYouSessionPosition(
     await transaction.runAsync(
       `UPDATE feed_sessions
           SET active_position = ?, updated_at = ?
-        WHERE id = ? AND status = 'active'`,
+        WHERE id = ? AND status IN ('active', 'exhausted')`,
       position,
       nowIso(now),
       sessionId,

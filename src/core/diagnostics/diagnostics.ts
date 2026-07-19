@@ -19,6 +19,18 @@ export function configureDiagnosticSink(nextSink: DiagnosticSink): void {
   sink = nextSink;
 }
 
-export function captureException(name: string, error: unknown): void {
-  sink({ name, context: toDiagnosticErrorContext(error) });
+export function captureException(
+  name: string,
+  error: unknown,
+  safeContext: Record<string, string | number | boolean | undefined> = {},
+): void {
+  sink({
+    name,
+    context: {
+      ...toDiagnosticErrorContext(error),
+      ...Object.fromEntries(
+        Object.entries(safeContext).filter(([, value]) => value !== undefined),
+      ),
+    },
+  });
 }

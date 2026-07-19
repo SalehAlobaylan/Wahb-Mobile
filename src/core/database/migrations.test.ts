@@ -4,7 +4,7 @@ import { migrations } from './migrations';
 
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
-    expect(migrations.map(({ version }) => version)).toEqual([1, 2]);
+    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
     );
@@ -19,5 +19,9 @@ describe('database migrations', () => {
 
   it('persists the active position required for honest session restoration', () => {
     expect(migrations[1]?.statements).toContain('active_position');
+  });
+
+  it('keeps permanent outbox rejections auditable without retrying them', () => {
+    expect(migrations[2]?.statements).toContain('event_outbox_rejections');
   });
 });

@@ -89,7 +89,24 @@ export const forYouFeedResponseSchema = z
     };
   });
 
+export const interactionTypeSchema = z.enum([
+  'like',
+  'bookmark',
+  'share',
+  'view',
+  'complete',
+]);
+
+export const interactionResponseSchema = z
+  .object({
+    code: z.number().int(),
+    message: z.string(),
+    data: z.unknown().optional(),
+  })
+  .passthrough();
+
 export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
 export type ForYouItem = z.infer<typeof forYouItemSchema>;
 export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
+export type InteractionType = z.infer<typeof interactionTypeSchema>;
