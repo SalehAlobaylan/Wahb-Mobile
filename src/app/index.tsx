@@ -1,5 +1,5 @@
-import { FoundationScreen } from '@/features/foundation/foundation-screen';
+import { ForYouSliceScreen } from '@/features/for-you/for-you-slice-screen';
 
 export default function IndexRoute() {
-  return <FoundationScreen />;
+  return <ForYouSliceScreen />;
 }

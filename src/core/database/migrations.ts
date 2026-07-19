@@ -57,6 +57,15 @@ export const migrations: readonly Migration[] = [
         ON event_outbox(status, next_attempt_at, sequence);
     `,
   },
+  {
+    version: 2,
+    statements: `
+      ALTER TABLE feed_sessions
+        ADD COLUMN active_position INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE feed_sessions
+        ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

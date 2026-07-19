@@ -16,6 +16,8 @@ import { useEffect } from 'react';
 import { initializeDatabase } from '@/core/database/migrations';
 import '@/core/i18n';
 import { queryClient } from '@/core/query/query-client';
+import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
+import { PlaybackProvider } from '@/features/playback/playback-provider';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -44,13 +46,17 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
-        <StatusBar style="auto" />
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-        </Stack>
-      </SQLiteProvider>
-    </QueryClientProvider>
+    <AppErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
+          <PlaybackProvider>
+            <StatusBar style="auto" />
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="index" />
+            </Stack>
+          </PlaybackProvider>
+        </SQLiteProvider>
+      </QueryClientProvider>
+    </AppErrorBoundary>
   );
 }

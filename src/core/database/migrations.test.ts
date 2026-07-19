@@ -4,7 +4,7 @@ import { migrations } from './migrations';
 
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
-    expect(migrations.map(({ version }) => version)).toEqual([1]);
+    expect(migrations.map(({ version }) => version)).toEqual([1, 2]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
     );
@@ -15,5 +15,9 @@ describe('database migrations', () => {
 
   it('does not misrepresent player cache as a download system', () => {
     expect(migrations[0]?.statements).not.toContain('downloads');
+  });
+
+  it('persists the active position required for honest session restoration', () => {
+    expect(migrations[1]?.statements).toContain('active_position');
   });
 });
