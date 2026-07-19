@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import * as Haptics from 'expo-haptics';
 import { VideoView } from 'expo-video';
 import {
   ChevronLeft,
@@ -13,7 +14,9 @@ import {
   ActivityIndicator,
   AppState,
   Pressable,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -49,7 +52,8 @@ function formatDuration(durationSeconds: number): string {
 export function ForYouSliceScreen() {
   const { t } = useTranslation();
   const db = useSQLiteContext();
-  const { identityQuery, sessionQuery, fetchNextPage } = useForYouSession();
+  const { identityQuery, sessionQuery, fetchNextPage, refreshSession } =
+    useForYouSession();
   const playback = usePlaybackController();
   const outbox = useOutbox();
   const consumption = useRef<{
@@ -71,6 +75,8 @@ export function ForYouSliceScreen() {
     position: number;
   } | null>(null);
   const [upNextSeconds, setUpNextSeconds] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [hasNewContent, setHasNewContent] = useState(false);
   const session = sessionQuery.data;
   const position =
     selection !== null && selection.sessionId === session?.id
@@ -296,6 +302,14 @@ export function ForYouSliceScreen() {
       return;
     }
 
+    if (isCurrent && playback.error) {
+      void playback.start(activePlaybackItem, {
+        positionSeconds: playback.currentTimeSeconds,
+        autoplay: true,
+      });
+      return;
+    }
+
     if (isCurrent && playback.phase === 'playing') {
       setUpNextSeconds(null);
       playback.pause();
@@ -313,6 +327,23 @@ export function ForYouSliceScreen() {
       autoplay: true,
     });
   }
+
+  const refreshForYouSession = useCallback(async () => {
+    setUpNextSeconds(null);
+    playback.pause();
+    setPendingAutoplay(null);
+    setIsRefreshing(true);
+    try {
+      await refreshSession();
+      setHasNewContent(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      captureException('foryou_session_refresh_failed', error);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [playback, refreshSession]);
 
   useEffect(() => {
     if (
@@ -405,117 +436,159 @@ export function ForYouSliceScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.card}>
-        {isVideoVisible ? (
-          <VideoView
-            player={playback.videoPlayer}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-            nativeControls={false}
-          />
-        ) : item.thumbnail_url ? (
-          <Image
-            source={item.thumbnail_url}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-          />
-        ) : (
-          <View style={styles.audioFallback} />
-        )}
-
-        <View style={styles.overlay} />
-        <View style={styles.header}>
-          <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
-          <Text style={styles.sessionLabel}>
-            {position + 1} / {session.items.length}
-          </Text>
-        </View>
-
-        <View style={styles.footer}>
-          <View style={styles.metaRow}>
-            <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
-            <Text style={styles.metaText}>{item.type}</Text>
-            <Text style={styles.metaText}>
-              {formatDuration(item.duration_sec)}
-            </Text>
-          </View>
-          <Text style={styles.title} numberOfLines={3}>
-            {item.title}
-          </Text>
-          {!!item.source_name && (
-            <Text style={styles.source}>{item.source_name}</Text>
+      <ScrollView
+        alwaysBounceVertical
+        bounces
+        contentContainerStyle={styles.refreshContainer}
+        refreshControl={
+          position === 0 ? (
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void refreshForYouSession()}
+              tintColor={colors.inkInverse}
+              title={t('foryou.refreshing')}
+              titleColor={colors.inkInverse}
+            />
+          ) : undefined
+        }
+        style={styles.refreshScroll}
+      >
+        <View style={styles.card}>
+          {isVideoVisible ? (
+            <VideoView
+              player={playback.videoPlayer}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+              nativeControls={false}
+            />
+          ) : item.thumbnail_url ? (
+            <Image
+              source={item.thumbnail_url}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+          ) : (
+            <View style={styles.audioFallback} />
           )}
 
-          {playback.error && isCurrent ? (
-            <Text style={styles.errorText}>{t('foryou.playbackError')}</Text>
-          ) : null}
-          {showUpNext ? (
-            <Text style={styles.upNextText}>
-              {t('foryou.upNext', { seconds: upNextSeconds })}
+          <View style={styles.overlay} />
+          <View style={styles.header}>
+            <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
+            {hasNewContent ? (
+              <Text style={styles.newContentLabel}>
+                {t('foryou.newContent')}
+              </Text>
+            ) : null}
+            <Text style={styles.sessionLabel}>
+              {position + 1} / {session.items.length}
             </Text>
-          ) : null}
+          </View>
 
-          <View style={styles.controls}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('foryou.previous')}
-              disabled={position === 0}
-              onPress={() => void selectPosition(position - 1)}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                position === 0 && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronLeft color={colors.inkInverse} size={22} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                isCurrent && playback.phase === 'playing'
-                  ? t('foryou.pause')
-                  : t('foryou.play')
-              }
-              onPress={togglePlayback}
-              style={({ pressed }) => [
-                styles.playButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              {isCurrent && playback.phase === 'playing' ? (
-                <Pause
-                  color={colors.inkInverse}
-                  size={26}
-                  fill={colors.inkInverse}
-                />
-              ) : (
-                <Play
-                  color={colors.inkInverse}
-                  size={26}
-                  fill={colors.inkInverse}
-                />
-              )}
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('foryou.next')}
-              disabled={
-                session.cursor === null && position >= session.items.length - 1
-              }
-              onPress={() => void selectPosition(position + 1)}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                session.cursor === null &&
-                  position >= session.items.length - 1 &&
-                  styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronRight color={colors.inkInverse} size={22} />
-            </Pressable>
+          <View style={styles.footer}>
+            <View style={styles.metaRow}>
+              <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
+              <Text style={styles.metaText}>{item.type}</Text>
+              <Text style={styles.metaText}>
+                {formatDuration(item.duration_sec)}
+              </Text>
+            </View>
+            <Text style={styles.title} numberOfLines={3}>
+              {item.title}
+            </Text>
+            {!!item.source_name && (
+              <Text style={styles.source}>{item.source_name}</Text>
+            )}
+
+            {playback.error && isCurrent ? (
+              <View style={styles.playbackFailure}>
+                <Text style={styles.errorText}>
+                  {t('foryou.playbackError')}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('foryou.retry')}
+                  onPress={() => void togglePlayback()}
+                  style={({ pressed }) => [
+                    styles.playbackRetry,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <RotateCcw color={colors.inkInverse} size={14} />
+                  <Text style={styles.playbackRetryText}>
+                    {t('foryou.retry')}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {showUpNext ? (
+              <Text style={styles.upNextText}>
+                {t('foryou.upNext', { seconds: upNextSeconds })}
+              </Text>
+            ) : null}
+
+            <View style={styles.controls}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('foryou.previous')}
+                disabled={position === 0}
+                onPress={() => void selectPosition(position - 1)}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  position === 0 && styles.disabledButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <ChevronLeft color={colors.inkInverse} size={22} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isCurrent && playback.phase === 'playing'
+                    ? t('foryou.pause')
+                    : t('foryou.play')
+                }
+                onPress={togglePlayback}
+                style={({ pressed }) => [
+                  styles.playButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                {isCurrent && playback.phase === 'playing' ? (
+                  <Pause
+                    color={colors.inkInverse}
+                    size={26}
+                    fill={colors.inkInverse}
+                  />
+                ) : (
+                  <Play
+                    color={colors.inkInverse}
+                    size={26}
+                    fill={colors.inkInverse}
+                  />
+                )}
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('foryou.next')}
+                disabled={
+                  session.cursor === null &&
+                  position >= session.items.length - 1
+                }
+                onPress={() => void selectPosition(position + 1)}
+                style={({ pressed }) => [
+                  styles.secondaryButton,
+                  session.cursor === null &&
+                    position >= session.items.length - 1 &&
+                    styles.disabledButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <ChevronRight color={colors.inkInverse} size={22} />
+              </Pressable>
+            </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -563,6 +636,8 @@ function ForYouEmpty() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#000' },
+  refreshScroll: { flex: 1 },
+  refreshContainer: { flexGrow: 1 },
   card: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
   audioFallback: {
     backgroundColor: colors.ink,
@@ -593,6 +668,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1.3,
   },
+  newContentLabel: {
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 11,
+    letterSpacing: 0.8,
+    marginLeft: 'auto',
+  },
   sessionLabel: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.mono,
@@ -618,6 +700,22 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.bodyMedium,
     fontSize: 15,
     marginTop: spacing.xs,
+  },
+  playbackFailure: {
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  playbackRetry: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 44,
+  },
+  playbackRetryText: {
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 14,
   },
   errorText: {
     color: colors.pressRedDark,

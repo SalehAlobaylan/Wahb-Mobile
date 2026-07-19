@@ -36,6 +36,16 @@ const config: ExpoConfig = {
     'expo-secure-store',
     'expo-sqlite',
     [
+      '@sentry/react-native',
+      {
+        // Build-only values. The plugin falls back to these same environment
+        // variables when they are absent locally; SENTRY_AUTH_TOKEN is never
+        // placed in app config.
+        organization: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+      },
+    ],
+    [
       'expo-audio',
       {
         microphonePermission: false,

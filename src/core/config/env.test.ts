@@ -7,6 +7,7 @@ describe('parseEnv', () => {
     expect(parseEnv({})).toEqual({
       EXPO_PUBLIC_CMS_URL: 'http://localhost:8080',
       EXPO_PUBLIC_IAM_URL: 'http://localhost:4003',
+      EXPO_PUBLIC_SENTRY_DSN: undefined,
     });
   });
 

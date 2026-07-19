@@ -19,6 +19,8 @@ export const resources = {
         unavailableDescription:
           'احتفظنا بأي جلسة محفوظة. حاول مجددًا عند عودة الاتصال.',
         retry: 'إعادة المحاولة',
+        refreshing: 'جارٍ تحديث الجلسة…',
+        newContent: 'محتوى جديد',
         caughtUp: 'لقد وصلت إلى نهاية هذه الجلسة.',
         caughtUpDescription: 'سيظهر المحتوى الجديد عند تحديث مقصود.',
         play: 'تشغيل',
@@ -50,6 +52,8 @@ export const resources = {
         unavailableDescription:
           'Any saved session remains safe. Try again when the connection returns.',
         retry: 'Retry',
+        refreshing: 'Refreshing your session…',
+        newContent: 'New Content',
         caughtUp: 'You reached the end of this session.',
         caughtUpDescription:
           'New content appears through an intentional refresh.',

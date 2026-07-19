@@ -54,6 +54,12 @@ opaque server session ID alongside the SQLite recovery ledger and only appends
 pages from that session. It must not silently mix old inventory into a new
 session.
 
+Pull-to-refresh is an intentional session reset: it fetches and atomically
+replaces the local session only after CMS successfully creates the new
+snapshot. It is available only on the first card, confirms a successful reset
+with a native success haptic and a New Content cue, and leaves the prior frozen
+session and its progress intact on failure.
+
 ## Interaction delivery
 
 Exposure and truthful completion events already enter a durable SQLite outbox
@@ -122,3 +128,15 @@ login is intentionally deferred.
 
 Expo SDK 57 establishes the minimum supported platforms: iOS 16.4 and Android
 7.0. Raising either minimum requires a documented product decision.
+
+## Diagnostics
+
+`@sentry/react-native` is present through Expo Continuous Native Generation and
+is enabled only when `EXPO_PUBLIC_SENTRY_DSN` is configured. A DSN is a public
+client identifier, not an authentication secret. The runtime disables replay,
+performance tracing, breadcrumbs, screenshots, and view hierarchy capture;
+its `beforeSend` scrubber retains only named, allow-listed diagnostic context.
+Source-map upload credentials, if introduced, are build-time secrets and must
+never be committed or exposed through `EXPO_PUBLIC_*` variables. Configure
+`SENTRY_ORG`, `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN` only in the
+build environment when source-map and native-symbol upload is enabled.

@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { initializeDatabase } from '@/core/database/migrations';
+import { initializeDiagnostics } from '@/core/diagnostics/sentry';
 import '@/core/i18n';
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
@@ -21,6 +22,7 @@ import { OutboxProvider } from '@/core/outbox/outbox-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
 
 void SplashScreen.preventAutoHideAsync();
+initializeDiagnostics();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
