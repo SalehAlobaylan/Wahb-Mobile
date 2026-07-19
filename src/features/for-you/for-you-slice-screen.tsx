@@ -41,7 +41,6 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useTranslation } from 'react-i18next';
 
-import { createServiceClients } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import {
   hapticSelection,
@@ -49,10 +48,12 @@ import {
   hapticWarning,
 } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import { useAuth } from '@/features/auth/auth-provider';
 import type { FrozenForYouSession } from '@/features/feed-session/for-you-session-repository';
 import {
   recordForYouCompletion,
   recordForYouExposure,
+  recordForYouProgress,
   updateForYouSessionPosition,
 } from '@/features/feed-session/for-you-session-repository';
 import { useForYouSession } from '@/features/feed-session/use-for-you-session';
@@ -71,8 +72,6 @@ import {
 import { ForYouDetailSheet } from './for-you-detail-sheet';
 
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
-
-const { cms } = createServiceClients();
 
 function formatDuration(durationSeconds: number): string {
   const minutes = Math.floor(durationSeconds / 60);
@@ -93,6 +92,7 @@ export function ForYouSliceScreen() {
   } = useForYouSession();
   const playback = usePlaybackController();
   const outbox = useOutbox();
+  const { clients, subject } = useAuth();
   const consumption = useRef<{
     key: string;
     state: ConsumptionState;
@@ -163,7 +163,9 @@ export function ForYouSliceScreen() {
     !playback.error &&
     !(position >= (session?.items.length ?? 0) - 1 && session?.cursor === null);
   const installationId = identityQuery.data;
-  const identityScope = installationId ? `anonymous:${installationId}` : null;
+  const identityScope = installationId
+    ? (subject ? `user:${subject.id}` : `anonymous:${installationId}`)
+    : null;
   const liked = item ? (engagement[item.id]?.liked ?? item.is_liked) : false;
   const bookmarked = item
     ? (engagement[item.id]?.bookmarked ?? item.is_bookmarked)
@@ -184,7 +186,7 @@ export function ForYouSliceScreen() {
       : 0;
   const transcriptQuery = useQuery({
     queryKey: ['for-you-transcript-display', item?.transcript_id],
-    queryFn: () => cms.getTranscript(item!.transcript_id!),
+    queryFn: () => clients.cms.getTranscript(item!.transcript_id!),
     enabled: displayMode === 'transcript' && Boolean(item?.transcript_id),
   });
 
@@ -303,6 +305,25 @@ export function ForYouSliceScreen() {
     queueCompletion,
     session,
   ]);
+
+  useEffect(() => {
+    if (!session || !item || !identityScope || !isCurrent || playback.phase !== 'playing') {
+      return;
+    }
+    void recordForYouProgress(
+      db,
+      session.id,
+      position,
+      identityScope,
+      playback.currentTimeSeconds,
+      consumption.current?.state.accumulatedPlayedSeconds ?? 0,
+    ).then((recorded) => {
+      if (recorded) {
+        return outbox.flush();
+      }
+      return undefined;
+    }).catch((error: unknown) => captureException('foryou_progress_queue_failed', error));
+  }, [db, identityScope, isCurrent, item, outbox, playback.currentTimeSeconds, playback.phase, position, session]);
 
   useEffect(() => {
     if (!session || !item || !isCurrent || playback.phase !== 'playing') {
@@ -494,7 +515,8 @@ export function ForYouSliceScreen() {
     }
     try {
       const result = await Share.share({
-        message: [item.title, item.source_name].filter(Boolean).join('\n'),
+        message: `https://wahb.salehspace.dev/content/${item.id}`,
+        title: item.title,
       });
       if (result.action === Share.sharedAction) {
         await outbox.enqueue({ contentId: item.id, type: 'share' });

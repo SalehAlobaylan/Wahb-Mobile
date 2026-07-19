@@ -140,6 +140,15 @@ export const migrations: readonly Migration[] = [
         ON opened_news_stories(identity_scope, opened_at DESC);
     `,
   },
+  {
+    // A checkpoint is durable before it reaches CMS. One row-level watermark
+    // prevents the player time observer from filling the outbox every tick.
+    version: 8,
+    statements: `
+      ALTER TABLE feed_session_items
+        ADD COLUMN last_progress_reported_seconds INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

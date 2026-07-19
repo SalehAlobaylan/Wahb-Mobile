@@ -9,9 +9,10 @@ import {
   type ReactNode,
 } from 'react';
 
-import { createServiceClients, type InteractionType } from '@/core/api';
+import type { InteractionType } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
+import { useAuth } from '@/features/auth/auth-provider';
 
 import {
   enqueueInteraction,
@@ -25,27 +26,31 @@ type OutboxController = {
 };
 
 const OutboxContext = createContext<OutboxController | null>(null);
-const { cms } = createServiceClients();
-
 export function OutboxProvider({ children }: { children: ReactNode }) {
   const db = useSQLiteContext();
+  const { clients, subject } = useAuth();
   const flush = useCallback(async () => {
     const installationId = await getInstallationId();
-    const identityScope = `anonymous:${installationId}`;
+    const identityScope = subject
+      ? `user:${subject.id}`
+      : `anonymous:${installationId}`;
     try {
-      await flushOutbox(db, cms, identityScope, installationId);
+      await flushOutbox(db, clients.cms, identityScope, installationId);
     } catch (error) {
       captureException('outbox_flush_failed', error);
     }
-  }, [db]);
+  }, [clients.cms, db, subject]);
 
   const enqueue = useCallback(
     async (interaction: QueuedInteraction) => {
       const installationId = await getInstallationId();
-      await enqueueInteraction(db, `anonymous:${installationId}`, interaction);
+      const identityScope = subject
+        ? `user:${subject.id}`
+        : `anonymous:${installationId}`;
+      await enqueueInteraction(db, identityScope, interaction);
       await flush();
     },
-    [db, flush],
+    [db, flush, subject],
   );
 
   useEffect(() => {

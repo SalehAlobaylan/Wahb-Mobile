@@ -4,6 +4,10 @@ import {
   forYouSessionResponseSchema,
   interactionResponseSchema,
   interactionTypeSchema,
+  historyResponseSchema,
+  preferencesResponseSchema,
+  savedContentResponseSchema,
+  topicPickerResponseSchema,
   articleContentResponseSchema,
   newsFeedResponseSchema,
   transcriptResponseSchema,
@@ -14,6 +18,10 @@ import {
   type NewsFeedResponse,
   type CommentsResponse,
   type Transcript,
+  type HistoryResponse,
+  type PreferencesResponse,
+  type SavedContentResponse,
+  type TopicPickerResponse,
 } from './schemas';
 import type { Transport } from './transport';
 import { HttpError } from './errors';
@@ -43,6 +51,12 @@ export type CmsApi = {
   ): Promise<Transcript>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
   deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
+  getSavedContent(request: SavedContentRequest): Promise<SavedContentResponse>;
+  getHistory(request: HistoryRequest): Promise<HistoryResponse>;
+  clearHistory(sessionId: string): Promise<void>;
+  getTopicPicker(signal?: AbortSignal): Promise<TopicPickerResponse>;
+  getPreferences(signal?: AbortSignal): Promise<PreferencesResponse>;
+  updateDeclaredTopics(topicIds: string[]): Promise<PreferencesResponse>;
 };
 
 export type NewsPageRequest = {
@@ -88,11 +102,25 @@ export type CommentsRequest = {
   signal?: AbortSignal;
 };
 
+export type SavedContentRequest = {
+  cursor?: string;
+  limit?: number;
+  sort?: 'saved_desc' | 'saved_asc';
+  feed?: 'all' | 'foryou' | 'news';
+  signal?: AbortSignal;
+};
+
+export type HistoryRequest = {
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+};
+
 export function createCmsApi(transport: Transport): CmsApi {
   return {
     getArticleContent(id, signal) {
       return transport.request(
-        { path: `/api/v1/content/${id}`, signal },
+        { path: `/api/v1/content/${id}`, signal, authenticated: true },
         articleContentResponseSchema,
       );
     },
@@ -107,6 +135,7 @@ export function createCmsApi(transport: Transport): CmsApi {
             session_id: installationId,
           },
           signal,
+          authenticated: true,
         },
         newsFeedResponseSchema,
       );
@@ -128,6 +157,7 @@ export function createCmsApi(transport: Transport): CmsApi {
             ...(excludeSeen ? { exclude_seen: true } : {}),
           },
           signal,
+          authenticated: true,
         },
         forYouFeedResponseSchema,
       );
@@ -139,6 +169,7 @@ export function createCmsApi(transport: Transport): CmsApi {
           method: 'POST',
           query: { limit, session_id: installationId },
           signal,
+          authenticated: true,
         },
         forYouSessionResponseSchema,
       );
@@ -159,6 +190,7 @@ export function createCmsApi(transport: Transport): CmsApi {
             session_id: installationId,
           },
           signal,
+          authenticated: true,
         },
         forYouSessionResponseSchema,
       );
@@ -173,13 +205,14 @@ export function createCmsApi(transport: Transport): CmsApi {
             session_id: installationId,
           },
           signal,
+          authenticated: true,
         },
         commentsResponseSchema,
       );
     },
     getTranscript(transcriptId, signal) {
       return transport.request(
-        { path: `/api/v1/transcripts/${transcriptId}`, signal },
+        { path: `/api/v1/transcripts/${transcriptId}`, signal, authenticated: true },
         transcriptResponseSchema,
       );
     },
@@ -204,6 +237,7 @@ export function createCmsApi(transport: Transport): CmsApi {
           },
           idempotencyKey,
           signal,
+          authenticated: true,
         },
         interactionResponseSchema,
       );
@@ -220,6 +254,7 @@ export function createCmsApi(transport: Transport): CmsApi {
               session_id: sessionId,
             },
             signal,
+            authenticated: true,
           },
           interactionResponseSchema,
         );
@@ -231,6 +266,62 @@ export function createCmsApi(transport: Transport): CmsApi {
         }
         throw error;
       }
+    },
+    getSavedContent({ cursor, limit = 20, sort = 'saved_desc', feed = 'all', signal }) {
+      return transport.request(
+        {
+          path: '/api/v1/interactions/bookmarks',
+          query: { ...(cursor ? { cursor } : {}), limit, sort, feed },
+          signal,
+          authenticated: true,
+        },
+        savedContentResponseSchema,
+      );
+    },
+    getHistory({ cursor, limit = 20, signal }) {
+      return transport.request(
+        {
+          path: '/api/v1/interactions/history',
+          query: { ...(cursor ? { cursor } : {}), limit },
+          signal,
+          authenticated: true,
+        },
+        historyResponseSchema,
+      );
+    },
+    async clearHistory(sessionId) {
+      await transport.request(
+        {
+          path: '/api/v1/interactions/history',
+          method: 'DELETE',
+          query: { session_id: sessionId },
+          authenticated: true,
+        },
+        interactionResponseSchema,
+      );
+    },
+    getTopicPicker(signal) {
+      return transport.request(
+        { path: '/api/v1/topics/picker', signal, authenticated: true },
+        topicPickerResponseSchema,
+      );
+    },
+    getPreferences(signal) {
+      return transport.request(
+        { path: '/api/v1/preferences', signal, authenticated: true },
+        preferencesResponseSchema,
+      );
+    },
+    updateDeclaredTopics(topicIds) {
+      return transport.request(
+        {
+          path: '/api/v1/preferences/topics',
+          method: 'PUT',
+          body: { topic_ids: topicIds },
+          authenticated: true,
+        },
+        preferencesResponseSchema,
+      );
     },
   };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   articleContentResponseSchema,
+  registerResponseSchema,
   commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
@@ -164,5 +165,21 @@ describe('News contract schemas', () => {
 
     expect(parsed.id).toBe(memberId);
     expect(parsed.original_url).toBe('https://example.test/article');
+  });
+});
+
+describe('IAM contract schemas', () => {
+  it('keeps a pending verification delivery visible without accepting tokens', () => {
+    const parsed = registerResponseSchema.parse({
+      id: '8f01d455-e0e6-411f-b345-9b95a68d5ad2',
+      username: 'wahb-member',
+      email: 'member@example.test',
+      tenant_id: 'default',
+      created_at: '2026-07-19T12:00:00.000Z',
+      verification_delivery: 'pending',
+    });
+
+    expect(parsed.verification_delivery).toBe('pending');
+    expect(parsed).not.toHaveProperty('refresh_token');
   });
 });

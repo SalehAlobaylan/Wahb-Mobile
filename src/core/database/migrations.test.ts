@@ -5,7 +5,7 @@ import { migrations } from './migrations';
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
     expect(migrations.map(({ version }) => version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7,
+      1, 2, 3, 4, 5, 6, 7, 8,
     ]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
@@ -50,5 +50,11 @@ describe('database migrations', () => {
       'CREATE TABLE IF NOT EXISTS reader_positions',
     );
     expect(migrations[6]?.statements).not.toContain('downloads');
+  });
+
+  it('stores a throttled durable playback-progress watermark', () => {
+    expect(migrations[7]?.statements).toContain(
+      'last_progress_reported_seconds',
+    );
   });
 });

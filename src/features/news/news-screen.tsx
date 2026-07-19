@@ -16,16 +16,16 @@ import {
 import { UserRound } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import { createServiceClients, type NewsFeedResponse } from '@/core/api';
+import type { NewsFeedResponse } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { getInstallationId } from '@/core/identity/installation-id';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import { recordOpenedNewsStory } from '@/features/article-reader/article-reader-repository';
+import { useAuth } from '@/features/auth/auth-provider';
 
 import { NewsNowPlayingTile } from './news-now-playing-tile';
 
-const { cms } = createServiceClients();
 const newsRefreshMs = 60_000;
 
 type NewsSlide = NewsFeedResponse['slides'][number];
@@ -45,6 +45,7 @@ export function NewsScreen() {
   const { t } = useTranslation();
   const db = useSQLiteContext();
   const router = useRouter();
+  const { clients, subject } = useAuth();
   const listRef = useRef<FlatList<NewsSlide>>(null);
   const slidesRef = useRef<NewsSlide[]>([]);
   const cursorRef = useRef<string | null>(null);
@@ -60,10 +61,10 @@ export function NewsScreen() {
     gcTime: Infinity,
   });
   const firstPageQuery = useQuery<NewsFeedResponse>({
-    queryKey: ['news-first-page', identityQuery.data],
+    queryKey: ['news-first-page', identityQuery.data, subject?.id],
     enabled: Boolean(identityQuery.data),
     queryFn: ({ signal }) =>
-      cms.getNewsPage({
+      clients.cms.getNewsPage({
         installationId: identityQuery.data!,
         limit: 10,
         signal,
@@ -90,7 +91,7 @@ export function NewsScreen() {
       return;
     }
     try {
-      const page = await cms.getNewsPage({
+      const page = await clients.cms.getNewsPage({
         installationId: identityQuery.data,
         limit: 10,
       });
@@ -104,7 +105,7 @@ export function NewsScreen() {
       // failure, so diagnostics are sufficient here.
       captureException('news_live_refresh_failed', error);
     }
-  }, [identityQuery.data]);
+  }, [clients.cms, identityQuery.data]);
 
   useEffect(() => {
     if (!identityQuery.data || slidesRef.current.length === 0) {
@@ -120,7 +121,7 @@ export function NewsScreen() {
     }
     loadingMoreRef.current = true;
     try {
-      const page = await cms.getNewsPage({
+      const page = await clients.cms.getNewsPage({
         cursor: cursorRef.current,
         installationId: identityQuery.data,
         limit: 10,
@@ -132,7 +133,7 @@ export function NewsScreen() {
     } finally {
       loadingMoreRef.current = false;
     }
-  }, [identityQuery.data, replaceSlides]);
+  }, [clients.cms, identityQuery.data, replaceSlides]);
 
   const refresh = useCallback(async () => {
     setIsRefreshing(true);

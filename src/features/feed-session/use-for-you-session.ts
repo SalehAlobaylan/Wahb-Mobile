@@ -2,9 +2,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { createServiceClients } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
+import { useAuth } from '@/features/auth/auth-provider';
 
 import {
   loadFreshForYouSession,
@@ -18,11 +18,10 @@ import {
   createPaginationBudget,
 } from './pagination-policy';
 
-const { cms } = createServiceClients();
-
 export function useForYouSession() {
   const db = useSQLiteContext();
   const queryClient = useQueryClient();
+  const { clients, subject } = useAuth();
   // A zero epoch is equivalent to a fully replenished bucket on first use and
   // avoids reading the clock during render.
   const paginationBudget = useRef(createPaginationBudget(0));
@@ -35,21 +34,23 @@ export function useForYouSession() {
   });
 
   const installationId = identityQuery.data;
+  const identityScope = installationId
+    ? (subject ? `user:${subject.id}` : `anonymous:${installationId}`)
+    : undefined;
   const sessionQuery = useQuery<FrozenForYouSession>({
-    queryKey: ['foryou-session', installationId],
-    enabled: Boolean(installationId),
+    queryKey: ['foryou-session', identityScope],
+    enabled: Boolean(installationId && identityScope),
     queryFn: async ({ signal }) => {
-      if (!installationId) {
+      if (!installationId || !identityScope) {
         throw new Error('Installation identity is unavailable.');
       }
 
-      const identityScope = `anonymous:${installationId}`;
       const restored = await loadFreshForYouSession(db, identityScope);
       if (restored) {
         return restored;
       }
 
-      const page = await cms.createForYouSession({
+      const page = await clients.cms.createForYouSession({
         installationId,
         limit: 10,
         signal,
@@ -82,7 +83,7 @@ export function useForYouSession() {
     }
     paginationInFlight.current = true;
     try {
-      const page = await cms.getForYouSessionPage({
+      const page = await clients.cms.getForYouSessionPage({
         installationId,
         sessionId: current.serverSessionId,
         cursor: current.cursor,
@@ -91,11 +92,11 @@ export function useForYouSession() {
       const updated = await appendForYouSessionPage(
         db,
         current.id,
-        `anonymous:${installationId}`,
+        identityScope!,
         page,
       );
       if (updated) {
-        queryClient.setQueryData(['foryou-session', installationId], updated);
+        queryClient.setQueryData(['foryou-session', identityScope], updated);
         return true;
       }
       return false;
@@ -105,7 +106,7 @@ export function useForYouSession() {
     } finally {
       paginationInFlight.current = false;
     }
-  }, [db, installationId, queryClient, sessionQuery.data]);
+  }, [clients.cms, db, identityScope, installationId, queryClient, sessionQuery.data]);
 
   const refreshSession = useCallback(async () => {
     if (!installationId) {
@@ -113,16 +114,16 @@ export function useForYouSession() {
     }
     // Materialization expires the prior session only after this request has
     // succeeded, so a failed refresh leaves the current frozen session intact.
-    const page = await cms.createForYouSession({ installationId, limit: 10 });
+    const page = await clients.cms.createForYouSession({ installationId, limit: 10 });
     const updated = await materializeForYouSession(
       db,
-      `anonymous:${installationId}`,
+      identityScope!,
       page,
       page.serverSessionId,
       page.expiresAt,
     );
-    queryClient.setQueryData(['foryou-session', installationId], updated);
-  }, [db, installationId, queryClient]);
+    queryClient.setQueryData(['foryou-session', identityScope], updated);
+  }, [clients.cms, db, identityScope, installationId, queryClient]);
 
   const hideItem = useCallback(
     async (contentId: string): Promise<FrozenForYouSession | null> => {
@@ -132,13 +133,13 @@ export function useForYouSession() {
       const updated = await hideForYouItem(
         db,
         sessionQuery.data.id,
-        `anonymous:${installationId}`,
+        identityScope!,
         contentId,
       );
-      queryClient.setQueryData(['foryou-session', installationId], updated);
+      queryClient.setQueryData(['foryou-session', identityScope], updated);
       return updated;
     },
-    [db, installationId, queryClient, sessionQuery.data],
+    [db, identityScope, installationId, queryClient, sessionQuery.data],
   );
 
   return {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { decideRetry, isPermanentRejection } from './outbox-policy';
+import { decideRetry, isOutboxEventType, isPermanentRejection } from './outbox-policy';
 
 describe('outbox retry policy', () => {
   const now = new Date('2026-07-19T12:00:00.000Z');
@@ -26,5 +26,9 @@ describe('outbox retry policy', () => {
 
   it('caps retries even when the transport keeps failing', () => {
     expect(decideRetry(8, now)).toEqual({ kind: 'reject' });
+  });
+
+  it('allows durable progress checkpoints through the same ordered outbox', () => {
+    expect(isOutboxEventType('progress')).toBe(true);
   });
 });

@@ -62,6 +62,7 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
   const { t } = useTranslation();
   const params = useLocalSearchParams<{
     email?: string;
+    delivery?: string;
     reset?: string;
     token?: string;
     verified?: string;
@@ -117,8 +118,16 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
         await auth.login(email, password);
         router.replace('/');
       } else if (flow === 'register') {
-        await auth.register({ email, password, username });
-        router.replace({ pathname: '/check-email', params: { email } });
+        const registration = await auth.register({ email, password, username });
+        router.replace({
+          pathname: '/check-email',
+          params: {
+            email,
+            ...(registration.verification_delivery === 'pending'
+              ? { delivery: 'pending' }
+              : {}),
+          },
+        });
       } else if (flow === 'check-email') {
         await auth.resendVerification(email);
         setResendSeconds(60);
@@ -186,6 +195,11 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
               <MailCheck color={colors.pressRed} size={38} />
               <Text style={styles.checkEmailAddress}>{email}</Text>
             </View>
+          ) : null}
+          {flow === 'check-email' && params.delivery === 'pending' ? (
+            <Text accessibilityLiveRegion="polite" style={styles.deliveryHelp}>
+              {t('auth.checkEmail.deliveryHelp')}
+            </Text>
           ) : null}
           {flow === 'register' ? (
             <TextInput
@@ -403,5 +417,15 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontFamily: fontFamilies.bodyBold,
     fontSize: 16,
+  },
+  deliveryHelp: {
+    backgroundColor: colors.card,
+    borderColor: colors.ink,
+    borderWidth: 1,
+    color: colors.ink,
+    fontFamily: fontFamilies.body,
+    fontSize: 14,
+    lineHeight: 20,
+    padding: spacing.sm,
   },
 });

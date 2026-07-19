@@ -7,7 +7,16 @@ import {
   Text,
   View,
 } from 'react-native';
-import { ArrowLeft, LogOut, RotateCcw, UserRound } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  BookMarked,
+  Clock3,
+  LogOut,
+  RotateCcw,
+  Settings,
+  SlidersHorizontal,
+  UserRound,
+} from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 import { useSQLiteContext } from 'expo-sqlite';
 
@@ -56,6 +65,38 @@ export function AccountScreen() {
             </Text>
             <Pressable
               accessibilityRole="button"
+              onPress={() => router.push('/profile')}
+              style={styles.action}
+            >
+              <UserRound color={colors.ink} size={20} />
+              <Text style={styles.actionText}>{t('account.profile')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/interests')}
+              style={styles.action}
+            >
+              <SlidersHorizontal color={colors.ink} size={20} />
+              <Text style={styles.actionText}>{t('account.interests')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/saved')}
+              style={styles.action}
+            >
+              <BookMarked color={colors.ink} size={20} />
+              <Text style={styles.actionText}>{t('account.saved')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/history')}
+              style={styles.action}
+            >
+              <Clock3 color={colors.ink} size={20} />
+              <Text style={styles.actionText}>{t('account.history')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
               onPress={() => void auth.logout().then(() => router.replace('/'))}
               style={styles.action}
             >
@@ -75,6 +116,14 @@ export function AccountScreen() {
             </Pressable>
           </>
         )}
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/settings')}
+          style={styles.action}
+        >
+          <Settings color={colors.ink} size={20} />
+          <Text style={styles.actionText}>{t('settings.title')}</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           onPress={reset}

@@ -11,11 +11,12 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 import { initializeDatabase } from '@/core/database/migrations';
 import { initializeDiagnostics } from '@/core/diagnostics/sentry';
 import '@/core/i18n';
+import { bootstrapLanguagePreferences } from '@/features/settings/language-preferences';
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
@@ -40,14 +41,19 @@ export default function RootLayout() {
     HandicraftsBold: require('../../assets/fonts/TheYearofHandicrafts-Bold.otf'),
     HandicraftsBlack: require('../../assets/fonts/TheYearofHandicrafts-Black.otf'),
   });
+  const [languageReady, setLanguageReady] = useState(false);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    void bootstrapLanguagePreferences().finally(() => setLanguageReady(true));
+  }, []);
+
+  useEffect(() => {
+    if ((fontsLoaded || fontError) && languageReady) {
       void SplashScreen.hideAsync();
     }
-  }, [fontError, fontsLoaded]);
+  }, [fontError, fontsLoaded, languageReady]);
 
-  if (!fontsLoaded && !fontError) {
+  if ((!fontsLoaded && !fontError) || !languageReady) {
     return null;
   }
 
@@ -70,6 +76,11 @@ export default function RootLayout() {
                   <Stack.Screen name="reset-password" />
                   <Stack.Screen name="verify-email" />
                   <Stack.Screen name="account" />
+                  <Stack.Screen name="profile" />
+                  <Stack.Screen name="interests" />
+                  <Stack.Screen name="saved" />
+                  <Stack.Screen name="history" />
+                  <Stack.Screen name="settings" />
                 </Stack>
                 <LinkDispatcherProvider />
                 <NonFeedNowPlaying />

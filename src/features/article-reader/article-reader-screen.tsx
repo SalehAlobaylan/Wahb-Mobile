@@ -24,10 +24,11 @@ import {
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import { createServiceClients, type ArticleContent } from '@/core/api';
+import type { ArticleContent } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import { useAuth } from '@/features/auth/auth-provider';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import {
@@ -36,8 +37,6 @@ import {
   saveArticleSnapshot,
   saveReaderPosition,
 } from './article-reader-repository';
-
-const { cms } = createServiceClients();
 
 type ReaderDocument = {
   article: ArticleContent;
@@ -91,6 +90,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const { t } = useTranslation();
   const db = useSQLiteContext();
   const outbox = useOutbox();
+  const { clients } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   const positionRef = useRef(0);
   const lastPersistAt = useRef(0);
@@ -106,7 +106,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
       const cached = await loadArticleSnapshot(db, id!);
       const readerPosition = await loadReaderPosition(db, id!);
       try {
-        const article = await cms.getArticleContent(id!);
+        const article = await clients.cms.getArticleContent(id!);
         await saveArticleSnapshot(db, article);
         return { article, readerPosition, source: 'network' };
       } catch (error) {

@@ -2,8 +2,10 @@ import {
   authTokenPairSchema,
   messageResponseSchema,
   registerResponseSchema,
+  iamProfileSchema,
   type AuthTokenPair,
   type RegisteredAccount,
+  type IamProfile,
 } from './schemas';
 import type { Transport } from './transport';
 
@@ -16,6 +18,8 @@ export type IamApi = {
   verifyEmail(token: string): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, newPassword: string): Promise<void>;
+  getProfile(): Promise<IamProfile>;
+  updateProfile(input: UpdateProfileInput): Promise<IamProfile>;
 };
 
 export type PasswordCredentials = {
@@ -25,6 +29,12 @@ export type PasswordCredentials = {
 
 export type RegisterInput = PasswordCredentials & {
   username: string;
+};
+
+export type UpdateProfileInput = {
+  username?: string;
+  bio?: string;
+  avatarUrl?: string;
 };
 
 export function createIamApi(transport: Transport): IamApi {
@@ -100,6 +110,27 @@ export function createIamApi(transport: Transport): IamApi {
           path: '/api/v1/auth/reset-password',
         },
         messageResponseSchema,
+      );
+    },
+    getProfile() {
+      return transport.request(
+        { method: 'GET', path: '/api/v1/users/profile', authenticated: true },
+        iamProfileSchema,
+      );
+    },
+    updateProfile(input) {
+      return transport.request(
+        {
+          method: 'PUT',
+          path: '/api/v1/users/profile',
+          authenticated: true,
+          body: {
+            ...(input.username !== undefined ? { username: input.username } : {}),
+            ...(input.bio !== undefined ? { bio: input.bio } : {}),
+            ...(input.avatarUrl !== undefined ? { avatar_url: input.avatarUrl } : {}),
+          },
+        },
+        iamProfileSchema,
       );
     },
   };

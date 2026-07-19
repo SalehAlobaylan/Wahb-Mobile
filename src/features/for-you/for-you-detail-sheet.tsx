@@ -15,8 +15,9 @@ import {
 import { MessageCircle, FileText, Info, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import { createServiceClients, type ForYouItem } from '@/core/api';
+import type { ForYouItem } from '@/core/api';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import { useAuth } from '@/features/auth/auth-provider';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
 
@@ -28,8 +29,6 @@ type ForYouDetailSheetProps = {
   onClose: () => void;
 };
 
-const { cms } = createServiceClients();
-
 export function ForYouDetailSheet({
   item,
   installationId,
@@ -38,6 +37,7 @@ export function ForYouDetailSheet({
   onClose,
 }: ForYouDetailSheetProps) {
   const { t } = useTranslation();
+  const { clients } = useAuth();
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const [expanded, setExpanded] = useState(initialTab === 'transcript');
@@ -71,12 +71,12 @@ export function ForYouDetailSheet({
   const commentsQuery = useQuery({
     queryKey: ['content-comments', item.id, installationId],
     queryFn: () =>
-      cms.getComments({ contentId: item.id, installationId, limit: 20 }),
+      clients.cms.getComments({ contentId: item.id, installationId, limit: 20 }),
     enabled: visible && tab === 'comments',
   });
   const transcriptQuery = useQuery({
     queryKey: ['transcript', item.transcript_id],
-    queryFn: () => cms.getTranscript(item.transcript_id!),
+    queryFn: () => clients.cms.getTranscript(item.transcript_id!),
     enabled: visible && tab === 'transcript' && Boolean(item.transcript_id),
   });
 

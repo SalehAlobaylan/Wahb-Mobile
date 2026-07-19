@@ -41,5 +41,5 @@ export function decideRetry(
 }
 
 export function isOutboxEventType(value: string): value is OutboxEventType {
-  return ['like', 'bookmark', 'share', 'view', 'complete'].includes(value);
+  return ['like', 'bookmark', 'share', 'view', 'progress', 'complete'].includes(value);
 }

@@ -11,7 +11,9 @@ import {
 import {
   createServiceClients,
   type AuthTokenPair,
+  type RegisteredAccount,
   type RegisterInput,
+  type ServiceClients,
 } from '@/core/api';
 import { resetInstallationId } from '@/core/identity/installation-id';
 import { queryClient } from '@/core/query/query-client';
@@ -21,7 +23,9 @@ import { AuthSessionManager, type AuthSessionSnapshot } from './auth-session';
 
 type AuthController = AuthSessionSnapshot & {
   isBootstrapping: boolean;
-  register(input: RegisterInput): Promise<void>;
+  /** These attach the in-memory access token and recover one expired request. */
+  clients: ServiceClients;
+  register(input: RegisterInput): Promise<RegisteredAccount>;
   login(email: string, password: string): Promise<void>;
   logout(): Promise<void>;
   resendVerification(email: string): Promise<void>;
@@ -63,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const register = useCallback(async (input: RegisterInput) => {
-    await publicClients.iam.register(input);
+    return publicClients.iam.register(input);
   }, []);
   const login = useCallback(
     async (email: string, password: string) => {
@@ -92,6 +96,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       ...snapshot,
       isBootstrapping,
+      clients: authenticatedClients,
       register,
       login,
       logout,

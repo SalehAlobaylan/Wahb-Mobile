@@ -466,3 +466,64 @@ export function recordForYouCompletion(
     },
   );
 }
+
+/** Queue a resumable checkpoint at most once per 30 seconds of new progress. */
+export async function recordForYouProgress(
+  db: SQLiteDatabase,
+  sessionId: string,
+  position: number,
+  identityScope: string,
+  positionSeconds: number,
+  actualPlayedSeconds: number,
+  now = new Date(),
+): Promise<boolean> {
+  const normalizedPosition = Math.max(0, Math.floor(positionSeconds));
+  if (normalizedPosition < 30) {
+    return false;
+  }
+  let recorded = false;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    const item = await transaction.getFirstAsync<{
+      content_id: string;
+      last_progress_reported_seconds: number;
+    }>(
+      `SELECT content_id, last_progress_reported_seconds
+         FROM feed_session_items
+        WHERE session_id = ? AND position = ?`,
+      sessionId,
+      position,
+    );
+    if (
+      !item ||
+      normalizedPosition - item.last_progress_reported_seconds < 30
+    ) {
+      return;
+    }
+    await enqueueInteractionWithIds(
+      transaction,
+      identityScope,
+      {
+        contentId: item.content_id,
+        type: 'progress',
+        metadata: {
+          surface: 'foryou',
+          position_seconds: normalizedPosition,
+          actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
+        },
+      },
+      Crypto.randomUUID(),
+      Crypto.randomUUID(),
+      now,
+    );
+    await transaction.runAsync(
+      `UPDATE feed_session_items
+          SET last_progress_reported_seconds = ?
+        WHERE session_id = ? AND position = ?`,
+      normalizedPosition,
+      sessionId,
+      position,
+    );
+    recorded = true;
+  });
+  return recorded;
+}

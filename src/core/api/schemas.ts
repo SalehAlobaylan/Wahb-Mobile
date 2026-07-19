@@ -214,6 +214,7 @@ export const registerResponseSchema = z
     email: z.string().email(),
     tenant_id: z.string().min(1),
     created_at: z.string().datetime(),
+    verification_delivery: z.enum(['sent', 'pending']).optional(),
   })
   .passthrough();
 
@@ -226,6 +227,7 @@ export const interactionTypeSchema = z.enum([
   'bookmark',
   'share',
   'view',
+  'progress',
   'complete',
 ]);
 
@@ -234,6 +236,103 @@ export const interactionResponseSchema = z
     code: z.number().int(),
     message: z.string(),
     data: z.unknown().optional(),
+  })
+  .passthrough();
+
+const savedContentItemSchema = z
+  .object({
+    id: z.uuid(),
+    type: z.enum(['NEWS', 'VIDEO', 'PODCAST']),
+    title: z.string().nullable().optional(),
+    thumbnail_url: absoluteHttpUrl.nullable().optional(),
+    source_name: z.string().nullable().optional(),
+    author: z.string().nullable().optional(),
+    published_at: z.string().datetime().nullable().optional(),
+    bookmarked_at: z.string().datetime().optional(),
+    playback_url: absoluteHttpUrl.optional(),
+    playback_type: playbackTypeSchema.optional(),
+    fallback_playback_url: absoluteHttpUrl.nullable().optional(),
+    has_video: z.boolean().optional(),
+    duration_sec: z.number().int().positive().optional(),
+    is_bookmarked: z.boolean().optional(),
+  })
+  .passthrough();
+
+export const savedContentResponseSchema = z
+  .object({
+    cursor: z.string().nullable().optional(),
+    items: z.array(savedContentItemSchema),
+  })
+  .passthrough()
+  .transform((response) => ({
+    cursor: response.cursor ?? null,
+    items: response.items,
+  }));
+
+export const historyResponseSchema = z
+  .object({
+    cursor: z.string().nullable().optional(),
+    items: z.array(
+      z
+        .object({
+          content_id: z.uuid(),
+          viewed_at: z.string().datetime(),
+          type: z.enum(['NEWS', 'VIDEO', 'PODCAST']),
+          title: z.string().optional(),
+          thumbnail_url: absoluteHttpUrl.nullable().optional(),
+          media_url: absoluteHttpUrl.nullable().optional(),
+          duration_sec: z.number().int().positive().nullable().optional(),
+          author: z.string().nullable().optional(),
+          source_name: z.string().nullable().optional(),
+          progress_seconds: z.number().int().nonnegative().nullable().optional(),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough()
+  .transform((response) => ({
+    cursor: response.cursor ?? null,
+    items: response.items,
+  }));
+
+const topicSchema = z
+  .object({
+    id: z.uuid(),
+    slug: z.string().min(1),
+    label_ar: z.string().min(1),
+    label_en: z.string().min(1),
+    category_slug: z.string().min(1),
+    state: z.string().optional(),
+  })
+  .passthrough();
+
+export const topicPickerResponseSchema = z
+  .object({
+    categories: z.array(z.unknown()),
+    topics: z.array(topicSchema),
+  })
+  .passthrough();
+
+export const preferencesResponseSchema = z
+  .object({
+    declared: z.array(topicSchema),
+    learned: z.array(topicSchema),
+    muted: z.array(topicSchema),
+  })
+  .passthrough();
+
+export const iamProfileSchema = z
+  .object({
+    id: z.uuid(),
+    username: z.string().min(1),
+    email: z.string().email(),
+    tenant_id: z.string().min(1),
+    email_verified: z.boolean(),
+    bio: z.string().nullable().optional(),
+    avatar_url: absoluteHttpUrl.nullable().optional(),
+    interests: z.array(z.string()).nullable().optional(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
   })
   .passthrough();
 
@@ -288,3 +387,10 @@ export type RegisteredAccount = z.infer<typeof registerResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;
 export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
 export type Transcript = z.infer<typeof transcriptResponseSchema>;
+export type SavedContentResponse = z.infer<typeof savedContentResponseSchema>;
+export type SavedContentItem = SavedContentResponse['items'][number];
+export type HistoryResponse = z.infer<typeof historyResponseSchema>;
+export type HistoryItem = HistoryResponse['items'][number];
+export type TopicPickerResponse = z.infer<typeof topicPickerResponseSchema>;
+export type PreferencesResponse = z.infer<typeof preferencesResponseSchema>;
+export type IamProfile = z.infer<typeof iamProfileSchema>;
