@@ -10,6 +10,7 @@ const config: ExpoConfig = {
   scheme: 'wahb',
   userInterfaceStyle: 'automatic',
   ios: {
+    associatedDomains: ['applinks:wahb.salehspace.dev'],
     supportsTablet: false,
     bundleIdentifier: 'com.salehspace.wahb',
     buildNumber: '1',
@@ -23,6 +24,19 @@ const config: ExpoConfig = {
       monochromeImage: './assets/brand/wahb-logo-circle.png',
     },
     predictiveBackGestureEnabled: true,
+    intentFilters: [
+      {
+        action: 'VIEW',
+        autoVerify: true,
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'https', host: 'wahb.salehspace.dev' }],
+      },
+      {
+        action: 'VIEW',
+        category: ['BROWSABLE', 'DEFAULT'],
+        data: [{ scheme: 'wahb' }],
+      },
+    ],
   },
   plugins: [
     'expo-router',

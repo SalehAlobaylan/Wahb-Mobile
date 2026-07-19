@@ -1,10 +1,12 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import { VideoView } from 'expo-video';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bookmark,
   ChevronLeft,
   ChevronRight,
+  CircleUserRound,
   FileText,
   Gauge,
   Heart,
@@ -80,6 +82,7 @@ function formatDuration(durationSeconds: number): string {
 
 export function ForYouSliceScreen() {
   const { t } = useTranslation();
+  const router = useRouter();
   const db = useSQLiteContext();
   const {
     identityQuery,
@@ -796,13 +799,27 @@ export function ForYouSliceScreen() {
           </Pressable>
         </View>
         <View style={styles.header}>
-          <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
-          {hasNewContent ? (
-            <Text style={styles.newContentLabel}>{t('foryou.newContent')}</Text>
-          ) : null}
-          <Text style={styles.sessionLabel}>
-            {position + 1} / {session.items.length}
-          </Text>
+          <View>
+            <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
+            {hasNewContent ? (
+              <Text style={styles.newContentLabel}>
+                {t('foryou.newContent')}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.headerRight}>
+            <Text style={styles.sessionLabel}>
+              {position + 1} / {session.items.length}
+            </Text>
+            <Pressable
+              accessibilityLabel={t('account.title')}
+              accessibilityRole="button"
+              onPress={() => router.push('/account')}
+              style={styles.accountButton}
+            >
+              <CircleUserRound color={colors.inkInverse} size={21} />
+            </Pressable>
+          </View>
         </View>
         {displayMode === 'transcript' ? (
           <ForYouTranscriptMode
@@ -1368,6 +1385,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+  },
+  headerRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  accountButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(26,26,26,0.35)',
+    borderColor: 'rgba(248,245,242,0.75)',
+    borderRadius: radii.round,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
   },
   displayRail: {
     gap: spacing.sm,

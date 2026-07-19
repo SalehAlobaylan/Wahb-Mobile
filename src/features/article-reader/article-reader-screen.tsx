@@ -94,7 +94,10 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const scrollRef = useRef<ScrollView>(null);
   const positionRef = useRef(0);
   const lastPersistAt = useRef(0);
-  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [bookmarkOverride, setBookmarkOverride] = useState<{
+    contentId: string;
+    value: boolean;
+  } | null>(null);
   const [sourcePrompt, setSourcePrompt] = useState<SourcePrompt>(null);
   const query = useQuery<ReaderDocument>({
     queryKey: ['article', id],
@@ -134,10 +137,6 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
     return () => clearTimeout(timer);
   }, [query.data]);
 
-  useEffect(() => {
-    setIsBookmarked(query.data?.article.is_bookmarked ?? false);
-  }, [query.data?.article.id, query.data?.article.is_bookmarked]);
-
   useEffect(
     () => () => {
       if (id) {
@@ -168,8 +167,12 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
     if (!query.data) {
       return;
     }
-    const next = !isBookmarked;
-    setIsBookmarked(next);
+    const current =
+      bookmarkOverride?.contentId === query.data.article.id
+        ? bookmarkOverride.value
+        : (query.data.article.is_bookmarked ?? false);
+    const next = !current;
+    setBookmarkOverride({ contentId: query.data.article.id, value: next });
     try {
       await outbox.enqueue({
         contentId: query.data.article.id,
@@ -178,10 +181,10 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
       });
       hapticSuccess();
     } catch (error) {
-      setIsBookmarked(!next);
+      setBookmarkOverride({ contentId: query.data.article.id, value: current });
       captureException('article_bookmark_enqueue_failed', error);
     }
-  }, [isBookmarked, outbox, query.data]);
+  }, [bookmarkOverride, outbox, query.data]);
 
   const shareArticle = useCallback(async () => {
     if (!query.data) {
@@ -246,6 +249,10 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   }
 
   const { article } = query.data;
+  const isBookmarked =
+    bookmarkOverride?.contentId === article.id
+      ? bookmarkOverride.value
+      : (article.is_bookmarked ?? false);
   const isTranslated = Boolean(
     article.translated_body_text || article.translated_title,
   );

@@ -13,6 +13,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { UserRound } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 import { createServiceClients, type NewsFeedResponse } from '@/core/api';
@@ -205,7 +206,17 @@ export function NewsScreen() {
           source={require('../../../assets/brand/wahb-wordmark.png')}
           style={styles.wordmark}
         />
-        <NewsNowPlayingTile />
+        <View style={styles.headerActions}>
+          <Pressable
+            accessibilityLabel={t('account.title')}
+            accessibilityRole="button"
+            onPress={() => router.push('/account')}
+            style={styles.accountButton}
+          >
+            <UserRound color={colors.ink} size={20} />
+          </Pressable>
+          <NewsNowPlayingTile />
+        </View>
       </View>
       {pendingFresh.length > 0 ? (
         <Pressable
@@ -347,6 +358,20 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
   },
   wordmark: { height: 36, width: 80 },
+  headerActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  accountButton: {
+    alignItems: 'center',
+    borderColor: colors.ink,
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    height: 44,
+    justifyContent: 'center',
+    width: 44,
+  },
   newContent: {
     alignSelf: 'center',
     backgroundColor: colors.pressRed,

@@ -93,6 +93,71 @@ export const resources = {
         unsafeSource: 'لا يمكن فتح هذا الرابط بأمان داخل التطبيق.',
         openSource: 'فتح المصدر',
       },
+      auth: {
+        email: 'البريد الإلكتروني',
+        username: 'اسم المستخدم',
+        password: 'كلمة المرور',
+        confirmPassword: 'تأكيد كلمة المرور',
+        back: 'رجوع',
+        backToSignIn: 'العودة لتسجيل الدخول',
+        invalidCredentials:
+          'تحقق من بريدك وكلمة المرور، أو أكمل التحقق من بريدك.',
+        requestFailed: 'تعذّر إكمال هذا الطلب الآن. حاول مرة أخرى.',
+        passwordMismatch: 'كلمتا المرور غير متطابقتين.',
+        invalidLink: 'هذا الرابط غير صالح أو لم يعد متاحًا.',
+        'sign-in': {
+          title: 'تسجيل الدخول',
+          description: 'سجّل الدخول لتخصيص تجربة وهب الخاصة بك.',
+          submit: 'تسجيل الدخول',
+          verified: 'تم تأكيد بريدك. يمكنك تسجيل الدخول الآن.',
+          resetComplete:
+            'تم تحديث كلمة المرور. سجّل الدخول بكلمة المرور الجديدة.',
+        },
+        register: {
+          title: 'إنشاء حساب',
+          description: 'أنشئ حسابك ثم تحقق من بريدك قبل تسجيل الدخول.',
+          submit: 'إنشاء الحساب',
+          link: 'إنشاء حساب',
+        },
+        'check-email': {
+          title: 'تحقق من بريدك',
+          description:
+            'أرسلنا رابط تحقق إلى هذا البريد. افتحه ثم عد لتسجيل الدخول.',
+          submit: 'إعادة إرسال الرابط',
+          resent: 'إذا كان الحساب بحاجة إلى التحقق، أُرسل رابط جديد.',
+          cooldown: 'أعد الإرسال خلال {{count}}ث',
+          changeEmail: 'تغيير البريد',
+          backToSignIn: 'العودة لتسجيل الدخول',
+        },
+        'forgot-password': {
+          title: 'إعادة تعيين كلمة المرور',
+          description: 'أدخل بريدك وسنرسل الرابط إذا كان الحساب موجودًا.',
+          submit: 'إرسال رابط إعادة التعيين',
+          link: 'نسيت كلمة المرور؟',
+          confirmation: 'إذا كان الحساب موجودًا، أُرسل رابط إعادة التعيين.',
+        },
+        'reset-password': {
+          title: 'كلمة مرور جديدة',
+          description: 'اختر كلمة مرور جديدة لحسابك.',
+          submit: 'تحديث كلمة المرور',
+        },
+        'verify-email': {
+          title: 'تأكيد البريد الإلكتروني',
+          description: 'أكّد بريدك لمتابعة تسجيل الدخول.',
+          submit: 'تأكيد البريد',
+        },
+      },
+      account: {
+        title: 'الحساب',
+        signedIn: 'تم تسجيل الدخول',
+        guest: 'أنت تتصفح بدون حساب.',
+        signIn: 'تسجيل الدخول',
+        signOut: 'تسجيل الخروج',
+        resetTitle: 'إعادة ضبط بيانات وهب المحلية؟',
+        resetCopy: 'سيُنشأ معرّف تثبيت جديد وسيتم تسجيل خروج هذا الجهاز.',
+        resetAction: 'إعادة ضبط البيانات المحلية',
+        cancel: 'إلغاء',
+      },
     },
   },
   en: {
@@ -190,6 +255,76 @@ export const resources = {
           '{{domain}} may be a file or unusual content type. Confirm to continue in the secure browser.',
         unsafeSource: 'This link cannot be safely opened in the app.',
         openSource: 'Open source',
+      },
+      auth: {
+        email: 'Email address',
+        username: 'Username',
+        password: 'Password',
+        confirmPassword: 'Confirm password',
+        back: 'Back',
+        backToSignIn: 'Back to sign in',
+        invalidCredentials:
+          'Check your email and password, or finish verifying your email.',
+        requestFailed:
+          'This request could not be completed right now. Try again.',
+        passwordMismatch: 'Passwords do not match.',
+        invalidLink: 'This link is invalid or no longer available.',
+        'sign-in': {
+          title: 'Sign in',
+          description: 'Sign in to personalize your Wahb experience.',
+          submit: 'Sign in',
+          verified: 'Your email is verified. You can sign in now.',
+          resetComplete:
+            'Your password is updated. Sign in with the new password.',
+        },
+        register: {
+          title: 'Create an account',
+          description:
+            'Create your account, then verify your email before signing in.',
+          submit: 'Create account',
+          link: 'Create an account',
+        },
+        'check-email': {
+          title: 'Check your email',
+          description:
+            'We sent a verification link to this address. Open it, then return to sign in.',
+          submit: 'Resend link',
+          resent:
+            'If this account needs verification, a new link has been sent.',
+          cooldown: 'Resend in {{count}}s',
+          changeEmail: 'Change email',
+          backToSignIn: 'Back to sign in',
+        },
+        'forgot-password': {
+          title: 'Reset password',
+          description:
+            'Enter your email and we will send a link if the account exists.',
+          submit: 'Send reset link',
+          link: 'Forgot password?',
+          confirmation: 'If this account exists, a reset link has been sent.',
+        },
+        'reset-password': {
+          title: 'New password',
+          description: 'Choose a new password for your account.',
+          submit: 'Update password',
+        },
+        'verify-email': {
+          title: 'Verify your email',
+          description: 'Verify your address to continue to sign in.',
+          submit: 'Verify email',
+        },
+      },
+      account: {
+        title: 'Account',
+        signedIn: 'Signed in',
+        guest: 'You are browsing without an account.',
+        signIn: 'Sign in',
+        signOut: 'Sign out',
+        resetTitle: 'Reset local Wahb data?',
+        resetCopy:
+          'This creates a new installation ID and signs this device out.',
+        resetAction: 'Reset local data',
+        cancel: 'Cancel',
       },
     },
   },

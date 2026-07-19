@@ -199,6 +199,28 @@ export const articleContentResponseSchema = z
   .passthrough()
   .transform(({ data }) => data);
 
+export const authTokenPairSchema = z
+  .object({
+    access_token: z.string().min(20),
+    refresh_token: z.string().uuid(),
+    expires_in: z.number().int().positive(),
+  })
+  .passthrough();
+
+export const registerResponseSchema = z
+  .object({
+    id: z.string().uuid(),
+    username: z.string().min(1),
+    email: z.string().email(),
+    tenant_id: z.string().min(1),
+    created_at: z.string().datetime(),
+  })
+  .passthrough();
+
+export const messageResponseSchema = z
+  .object({ message: z.string().min(1) })
+  .passthrough();
+
 export const interactionTypeSchema = z.enum([
   'like',
   'bookmark',
@@ -261,6 +283,8 @@ export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
 export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
 export type NewsFeedResponse = z.infer<typeof newsFeedResponseSchema>;
 export type ArticleContent = z.infer<typeof articleContentResponseSchema>;
+export type AuthTokenPair = z.infer<typeof authTokenPairSchema>;
+export type RegisteredAccount = z.infer<typeof registerResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;
 export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
 export type Transcript = z.infer<typeof transcriptResponseSchema>;

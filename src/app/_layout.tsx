@@ -19,6 +19,8 @@ import '@/core/i18n';
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
+import { AuthProvider } from '@/features/auth/auth-provider';
+import { LinkDispatcherProvider } from '@/features/auth/link-dispatcher-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
 import { NonFeedNowPlaying } from '@/features/playback/non-feed-now-playing';
 
@@ -53,17 +55,27 @@ export default function RootLayout() {
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
-          <OutboxProvider>
-            <PlaybackProvider>
-              <StatusBar style="auto" />
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="index" />
-                <Stack.Screen name="news" />
-                <Stack.Screen name="article/[id]" />
-              </Stack>
-              <NonFeedNowPlaying />
-            </PlaybackProvider>
-          </OutboxProvider>
+          <AuthProvider>
+            <OutboxProvider>
+              <PlaybackProvider>
+                <StatusBar style="auto" />
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="index" />
+                  <Stack.Screen name="news" />
+                  <Stack.Screen name="article/[id]" />
+                  <Stack.Screen name="sign-in" />
+                  <Stack.Screen name="register" />
+                  <Stack.Screen name="check-email" />
+                  <Stack.Screen name="forgot-password" />
+                  <Stack.Screen name="reset-password" />
+                  <Stack.Screen name="verify-email" />
+                  <Stack.Screen name="account" />
+                </Stack>
+                <LinkDispatcherProvider />
+                <NonFeedNowPlaying />
+              </PlaybackProvider>
+            </OutboxProvider>
+          </AuthProvider>
         </SQLiteProvider>
       </QueryClientProvider>
     </AppErrorBoundary>

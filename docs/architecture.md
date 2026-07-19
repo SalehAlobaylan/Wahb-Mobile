@@ -195,6 +195,22 @@ immediately and isolates account-scoped cached data.
 Universal Links will own verified-email and password-reset journeys. Social
 login is intentionally deferred.
 
+M6 keeps the access token in memory and the opaque refresh token only in
+SecureStore. `AuthSessionManager` is the sole refresh-rotation owner, so
+concurrent authenticated `401`s join one rotation rather than revoking one
+another's refresh token. User-scoped query keys must contain the IAM subject;
+logout removes those partitions without clearing anonymous public cache or the
+installation ID. Reset Local Wahb Data is the explicit exception: it clears
+local credentials, query state, SQLite feed/outbox/reader data, and regenerates
+that installation ID.
+
+The app recognizes only `https://wahb.salehspace.dev/...` public Universal
+Links and `wahb://...` as a private fallback. It routes content, verification,
+and reset intents through one dispatcher without logging a URL, token, or query
+string. Production deployment still must publish the matching Apple App Site
+Association and Android Asset Links files on `wahb.salehspace.dev`; native app
+configuration alone cannot establish domain ownership.
+
 ## Native configuration
 
 `app.config.ts` is the source of truth:

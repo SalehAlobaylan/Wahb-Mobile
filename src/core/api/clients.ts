@@ -1,6 +1,7 @@
 import { getEnv } from '@/core/config/env';
 
 import { createCmsApi, type CmsApi } from './cms';
+import { createIamApi, type IamApi } from './iam';
 import {
   createTransport,
   type AccessTokenProvider,
@@ -11,6 +12,7 @@ export type ServiceClients = {
   cms: CmsApi;
   cmsTransport: Transport;
   iamTransport: Transport;
+  iam: IamApi;
 };
 
 /**
@@ -27,12 +29,15 @@ export function createServiceClients(
     getAccessToken,
   });
 
+  const iamTransport = createTransport({
+    baseUrl: env.EXPO_PUBLIC_IAM_URL,
+    getAccessToken,
+  });
+
   return {
     cms: createCmsApi(cmsTransport),
     cmsTransport,
-    iamTransport: createTransport({
-      baseUrl: env.EXPO_PUBLIC_IAM_URL,
-      getAccessToken,
-    }),
+    iam: createIamApi(iamTransport),
+    iamTransport,
   };
 }
