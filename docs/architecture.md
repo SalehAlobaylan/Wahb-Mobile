@@ -67,6 +67,13 @@ the trailing pages asks the existing session for another cursor-bound page, not
 a fresh ranking request. Button navigation remains available alongside the
 swipe gesture for accessibility.
 
+Hide This Item is a durable local preference scoped to the installation
+identity. It atomically removes the item from the active snapshot, compacts the
+remaining positions, and filters it from later locally materialized pages. CMS
+does not yet offer the required installation/account hide or topic/source
+preference contracts, so the app must not present this local hide as a global
+ranking preference or expose a fake Not Interested action.
+
 ## Interaction delivery
 
 Exposure and truthful completion events already enter a durable SQLite outbox
@@ -97,6 +104,26 @@ metadata, and audio-session policy.
 Playback position writes must be throttled and checkpointed at lifecycle
 boundaries rather than written every frame.
 
+For You exposes a native playback progress indicator from the shared player
+snapshot. A direct tap on the active media surface toggles playback and gives a
+brief visual confirmation without a haptic; the explicit 44-point playback
+button remains the accessible alternative. The speed control cycles only the
+supported rates and persists the chosen rate for that item's media class, with
+selection haptic feedback.
+
+Haptics route through a small app-level feedback seam so Settings can later
+persist a user preference. A sheet tab change and speed change use selection
+feedback; a real sheet expand/collapse detent uses light impact; successful
+refreshes and durable engagement changes use success; recoverable playback or
+outbox failures use warning. Ordinary play/pause, swipes, and progress updates
+remain silent.
+
+Outside feed routes, the root layout mounts a compact Now Playing bar when a
+global player is active. Opening it exposes pause/play, ±15-second seek, speed,
+and dismissal; dismissal retains the item, timestamp, and prior play state for
+a five-second Undo. Feed routes remain free of this horizontal bar so M5 can
+provide the distinct News playback tile.
+
 After a true end-of-media signal, For You presents a three-second Up Next
 countdown and can replace playback only with the next item in the same frozen
 session. Replay, manual navigation, a failed next source, or the end of that
@@ -104,14 +131,16 @@ session cancels advancement; it never crosses into a newly ranked session.
 
 ## For You detail surface
 
-The production For You surface keeps cinematic content chrome compact: Fit and
-Fill are explicit visual modes, while Transcript opens the native draggable
-detail sheet. The sheet exposes CMS-backed read-only Comments and Transcript
-panels plus an About panel derived from the frozen feed item. It does not invent
-comments or transcript text when the public CMS endpoint has no approved data.
-Comments remain read-only until the authenticated writing slice. Likes and
-bookmarks already use the durable interaction ledger; the native share sheet
-records a share only after the operating system reports it completed.
+The production For You surface keeps cinematic content chrome compact: Fit,
+Fill, and Transcript are explicit visual modes. Transcript uses only the
+CMS-approved full-text response and presents a readable on-media excerpt over
+the editorial red halo; it is intentionally not represented as timestamped
+karaoke until CMS provides timed segments. The native draggable detail sheet
+retains the full read-only Transcript alongside Comments and About. It does not
+invent comments or transcript text when the public CMS endpoint has no approved
+data. Comments remain read-only until the authenticated writing slice. Likes
+and bookmarks already use the durable interaction ledger; the native share
+sheet records a share only after the operating system reports it completed.
 
 ## Downloads
 

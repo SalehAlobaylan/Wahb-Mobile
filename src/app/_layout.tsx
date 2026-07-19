@@ -20,6 +20,7 @@ import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
+import { NonFeedNowPlaying } from '@/features/playback/non-feed-now-playing';
 
 void SplashScreen.preventAutoHideAsync();
 initializeDiagnostics();
@@ -58,6 +59,7 @@ export default function RootLayout() {
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="index" />
               </Stack>
+              <NonFeedNowPlaying />
             </PlaybackProvider>
           </OutboxProvider>
         </SQLiteProvider>

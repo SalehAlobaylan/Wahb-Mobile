@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { hapticLightImpact, hapticSelection } from '@/core/haptics/feedback';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -40,6 +41,13 @@ export function ForYouDetailSheet({
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const [expanded, setExpanded] = useState(initialTab === 'transcript');
+  const selectTab = (nextTab: DetailTab) => {
+    if (nextTab === tab) {
+      return;
+    }
+    setTab(nextTab);
+    hapticSelection();
+  };
   const panResponder = useMemo(
     () =>
       PanResponder.create({
@@ -49,14 +57,16 @@ export function ForYouDetailSheet({
         onPanResponderRelease: (_, gesture) => {
           if (gesture.dy > 120) {
             onClose();
-          } else if (gesture.dy < -50) {
+          } else if (gesture.dy < -50 && !expanded) {
             setExpanded(true);
-          } else if (gesture.dy > 50) {
+            hapticLightImpact();
+          } else if (gesture.dy > 50 && expanded) {
             setExpanded(false);
+            hapticLightImpact();
           }
         },
       }),
-    [onClose],
+    [expanded, onClose],
   );
   const commentsQuery = useQuery({
     queryKey: ['content-comments', item.id, installationId],
@@ -117,19 +127,19 @@ export function ForYouDetailSheet({
               active={tab === 'comments'}
               icon={<MessageCircle size={16} />}
               label={t('foryou.comments')}
-              onPress={() => setTab('comments')}
+              onPress={() => selectTab('comments')}
             />
             <SheetTabButton
               active={tab === 'transcript'}
               icon={<FileText size={16} />}
               label={t('foryou.transcript')}
-              onPress={() => setTab('transcript')}
+              onPress={() => selectTab('transcript')}
             />
             <SheetTabButton
               active={tab === 'about'}
               icon={<Info size={16} />}
               label={t('foryou.about')}
-              onPress={() => setTab('about')}
+              onPress={() => selectTab('about')}
             />
           </View>
           <ScrollView contentContainerStyle={styles.panelContent}>

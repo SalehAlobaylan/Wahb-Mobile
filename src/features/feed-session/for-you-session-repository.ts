@@ -109,6 +109,7 @@ export async function loadFreshForYouSession(
 export async function appendForYouSessionPage(
   db: SQLiteDatabase,
   sessionId: string,
+  identityScope: string,
   page: ForYouFeedResponse,
   now = new Date(),
 ): Promise<FrozenForYouSession | null> {
@@ -127,6 +128,13 @@ export async function appendForYouSessionPage(
       sessionId,
     );
     const existingIds = new Set(rows.map((row) => row.content_id));
+    const hiddenRows = await transaction.getAllAsync<{ content_id: string }>(
+      `SELECT content_id
+         FROM hidden_content_items
+        WHERE identity_scope = ?`,
+      identityScope,
+    );
+    const hiddenIds = new Set(hiddenRows.map((row) => row.content_id));
     const position = await transaction.getFirstAsync<{ next_position: number }>(
       `SELECT COALESCE(MAX(position), -1) + 1 AS next_position
          FROM feed_session_items
@@ -135,7 +143,7 @@ export async function appendForYouSessionPage(
     );
     let nextPosition = position?.next_position ?? 0;
     for (const item of page.items) {
-      if (existingIds.has(item.id)) {
+      if (existingIds.has(item.id) || hiddenIds.has(item.id)) {
         continue;
       }
       await transaction.runAsync(
@@ -215,6 +223,14 @@ export async function materializeForYouSession(
           ? expiry
           : new Date(localExpiresAt),
       );
+  const hiddenRows = await db.getAllAsync<{ content_id: string }>(
+    `SELECT content_id
+       FROM hidden_content_items
+      WHERE identity_scope = ?`,
+    identityScope,
+  );
+  const hiddenIds = new Set(hiddenRows.map((row) => row.content_id));
+  const visibleItems = page.items.filter((item) => !hiddenIds.has(item.id));
 
   await db.withExclusiveTransactionAsync(async (transaction) => {
     await transaction.runAsync(
@@ -239,7 +255,7 @@ export async function materializeForYouSession(
       createdAt,
     );
 
-    for (const [position, item] of page.items.entries()) {
+    for (const [position, item] of visibleItems.entries()) {
       await transaction.runAsync(
         `INSERT INTO feed_session_items
           (session_id, position, content_id, snapshot_json, playback_position_ms)
@@ -259,8 +275,87 @@ export async function materializeForYouSession(
     activePosition: 0,
     createdAt,
     expiresAt: effectiveExpiresAt,
-    items: page.items.map((item) => ({ item, playbackPositionMs: 0 })),
+    items: visibleItems.map((item) => ({ item, playbackPositionMs: 0 })),
   };
+}
+
+/**
+ * Hide is intentionally local until CMS publishes its installation/account hide
+ * contract. The frozen session is compacted in the same transaction so the
+ * removed item cannot return after a process restart.
+ */
+export async function hideForYouItem(
+  db: SQLiteDatabase,
+  sessionId: string,
+  identityScope: string,
+  contentId: string,
+  now = new Date(),
+): Promise<FrozenForYouSession | null> {
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    const target = await transaction.getFirstAsync<{ position: number }>(
+      `SELECT position
+         FROM feed_session_items
+        WHERE session_id = ? AND content_id = ?`,
+      sessionId,
+      contentId,
+    );
+    if (!target) {
+      return;
+    }
+
+    await transaction.runAsync(
+      `INSERT OR IGNORE INTO hidden_content_items
+        (identity_scope, content_id, created_at)
+       VALUES (?, ?, ?)`,
+      identityScope,
+      contentId,
+      nowIso(now),
+    );
+    await transaction.runAsync(
+      `DELETE FROM feed_session_items
+        WHERE session_id = ? AND content_id = ?`,
+      sessionId,
+      contentId,
+    );
+    await transaction.runAsync(
+      `UPDATE feed_session_items
+          SET position = position - 1
+        WHERE session_id = ? AND position > ?`,
+      sessionId,
+      target.position,
+    );
+
+    const session = await transaction.getFirstAsync<{
+      active_position: number;
+    }>(`SELECT active_position FROM feed_sessions WHERE id = ?`, sessionId);
+    const count = await transaction.getFirstAsync<{ count: number }>(
+      `SELECT COUNT(*) AS count
+         FROM feed_session_items
+        WHERE session_id = ?`,
+      sessionId,
+    );
+    const remaining = count?.count ?? 0;
+    const previousPosition = session?.active_position ?? 0;
+    const nextPosition =
+      remaining === 0
+        ? 0
+        : Math.min(
+            previousPosition > target.position
+              ? previousPosition - 1
+              : previousPosition,
+            remaining - 1,
+          );
+    await transaction.runAsync(
+      `UPDATE feed_sessions
+          SET active_position = ?, updated_at = ?
+        WHERE id = ?`,
+      nextPosition,
+      nowIso(now),
+      sessionId,
+    );
+  });
+
+  return loadFreshForYouSession(db, identityScope, now);
 }
 
 export async function updateForYouSessionPosition(

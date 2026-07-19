@@ -9,6 +9,7 @@ import { getInstallationId } from '@/core/identity/installation-id';
 import {
   loadFreshForYouSession,
   appendForYouSessionPage,
+  hideForYouItem,
   materializeForYouSession,
   type FrozenForYouSession,
 } from './for-you-session-repository';
@@ -87,7 +88,12 @@ export function useForYouSession() {
         cursor: current.cursor,
         limit: 10,
       });
-      const updated = await appendForYouSessionPage(db, current.id, page);
+      const updated = await appendForYouSessionPage(
+        db,
+        current.id,
+        `anonymous:${installationId}`,
+        page,
+      );
       if (updated) {
         queryClient.setQueryData(['foryou-session', installationId], updated);
         return true;
@@ -118,5 +124,28 @@ export function useForYouSession() {
     queryClient.setQueryData(['foryou-session', installationId], updated);
   }, [db, installationId, queryClient]);
 
-  return { identityQuery, sessionQuery, fetchNextPage, refreshSession };
+  const hideItem = useCallback(
+    async (contentId: string): Promise<FrozenForYouSession | null> => {
+      if (!installationId || !sessionQuery.data) {
+        return null;
+      }
+      const updated = await hideForYouItem(
+        db,
+        sessionQuery.data.id,
+        `anonymous:${installationId}`,
+        contentId,
+      );
+      queryClient.setQueryData(['foryou-session', installationId], updated);
+      return updated;
+    },
+    [db, installationId, queryClient, sessionQuery.data],
+  );
+
+  return {
+    identityQuery,
+    sessionQuery,
+    fetchNextPage,
+    hideItem,
+    refreshSession,
+  };
 }

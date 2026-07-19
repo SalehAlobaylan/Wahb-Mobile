@@ -4,7 +4,9 @@ import { migrations } from './migrations';
 
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
-    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3, 4, 5]);
+    expect(migrations.map(({ version }) => version)).toEqual([
+      1, 2, 3, 4, 5, 6,
+    ]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
     );
@@ -32,5 +34,11 @@ describe('database migrations', () => {
   it('records exposure and completion delivery exactly once per frozen item', () => {
     expect(migrations[4]?.statements).toContain('view_reported');
     expect(migrations[4]?.statements).toContain('completion_reported');
+  });
+
+  it('persists local item hides independently of the player cache', () => {
+    expect(migrations[5]?.statements).toContain(
+      'CREATE TABLE IF NOT EXISTS hidden_content_items',
+    );
   });
 });

@@ -96,6 +96,20 @@ export const migrations: readonly Migration[] = [
         ADD COLUMN completion_reported INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    version: 6,
+    statements: `
+      CREATE TABLE IF NOT EXISTS hidden_content_items (
+        identity_scope TEXT NOT NULL,
+        content_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (identity_scope, content_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hidden_content_items_scope
+        ON hidden_content_items(identity_scope, created_at DESC);
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {
