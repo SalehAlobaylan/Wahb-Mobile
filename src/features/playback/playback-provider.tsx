@@ -3,7 +3,7 @@ import {
   useAudioPlayer,
   useAudioPlayerStatus,
 } from 'expo-audio';
-import { useEvent } from 'expo';
+import { useEvent, useEventListener } from 'expo';
 import { useVideoPlayer, type VideoPlayer } from 'expo-video';
 import {
   createContext,
@@ -84,6 +84,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioPlayerRef = useRef(audioPlayer);
   const rateDefaultsRef = useRef(rateDefaults);
 
+  useEventListener(videoPlayer, 'playToEnd', () => {
+    setSnapshot((current) =>
+      current.kind === 'video' ? { ...current, didReachEnd: true } : current,
+    );
+  });
+
   useEffect(() => {
     rateDefaultsRef.current = rateDefaults;
   }, [rateDefaults]);
@@ -140,6 +146,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         durationSeconds: 0,
         bufferedPositionSeconds: 0,
         isBuffering: false,
+        didReachEnd: false,
         sourceStage: null,
         error: null,
       });
@@ -237,6 +244,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   const play = useCallback(() => {
+    setSnapshot((current) => ({ ...current, didReachEnd: false }));
     if (snapshot.kind === 'video') {
       videoPlayerRef.current.play();
     } else if (snapshot.kind === 'audio') {
@@ -323,10 +331,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
               bufferedPositionSeconds: 0,
               isBuffering: false,
             };
+    const didReachEnd =
+      snapshot.kind === 'audio'
+        ? audioStatus.didJustFinish
+        : snapshot.didReachEnd;
     return {
       ...snapshot,
       phase,
       ...playbackMetrics,
+      didReachEnd,
       videoPlayer,
       start,
       play,

@@ -56,11 +56,14 @@ session.
 
 ## Interaction delivery
 
-Likes, bookmarks, progress, reports, and exposure events will use a durable
-SQLite outbox. Every mutation carries an idempotency key and ordering sequence.
-The sender retries with backoff and reconciles authoritative server state.
-Optimistic UI must visibly resolve or roll back; it must never silently discard
-an action.
+Exposure and truthful completion events already enter a durable SQLite outbox
+atomically with their frozen-session item marker, so restart cannot duplicate
+or lose the event. The classifier counts only plausible continuous playback;
+seek jumps do not create listening time. Likes, bookmarks, progress, and
+reports extend the same outbox contract later. Every mutation carries an
+idempotency key and ordering sequence. The sender retries with backoff and
+reconciles authoritative server state. Optimistic UI must visibly resolve or
+roll back; it must never silently discard an action.
 
 ## Playback
 
@@ -77,6 +80,11 @@ metadata, and audio-session policy.
 
 Playback position writes must be throttled and checkpointed at lifecycle
 boundaries rather than written every frame.
+
+After a true end-of-media signal, For You presents a three-second Up Next
+countdown and can replace playback only with the next item in the same frozen
+session. Replay, manual navigation, a failed next source, or the end of that
+session cancels advancement; it never crosses into a newly ranked session.
 
 ## Downloads
 

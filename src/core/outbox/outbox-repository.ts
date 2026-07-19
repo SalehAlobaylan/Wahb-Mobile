@@ -19,6 +19,8 @@ type EventOutboxRow = {
   attempt_count: number;
 };
 
+type OutboxWriteExecutor = Pick<SQLiteDatabase, 'getFirstAsync' | 'runAsync'>;
+
 export type QueuedInteraction = {
   contentId: string;
   type: InteractionType;
@@ -66,6 +68,27 @@ export async function enqueueInteraction(
   now = new Date(),
 ): Promise<string> {
   const id = Crypto.randomUUID();
+  const idempotencyKey = Crypto.randomUUID();
+  await enqueueInteractionWithIds(
+    db,
+    identityScope,
+    interaction,
+    id,
+    idempotencyKey,
+    now,
+  );
+  return id;
+}
+
+/** Allows a feature-local SQLite transaction to atomically create an outbox event. */
+export async function enqueueInteractionWithIds(
+  db: OutboxWriteExecutor,
+  identityScope: string,
+  interaction: QueuedInteraction,
+  id: string,
+  idempotencyKey: string,
+  now = new Date(),
+): Promise<void> {
   const createdAt = now.toISOString();
   const sequence = await db.getFirstAsync<{ next_sequence: number }>(
     `SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
@@ -81,12 +104,11 @@ export async function enqueueInteraction(
     identityScope,
     interaction.type,
     JSON.stringify(interaction),
-    Crypto.randomUUID(),
+    idempotencyKey,
     sequence?.next_sequence ?? 1,
     createdAt,
     createdAt,
   );
-  return id;
 }
 
 export async function claimNextOutboxEvent(

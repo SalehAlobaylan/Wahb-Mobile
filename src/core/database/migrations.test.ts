@@ -4,7 +4,7 @@ import { migrations } from './migrations';
 
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
-    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3, 4]);
+    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3, 4, 5]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
     );
@@ -27,5 +27,10 @@ describe('database migrations', () => {
 
   it('links recovery-ledger sessions to the CMS-owned frozen session', () => {
     expect(migrations[3]?.statements).toContain('server_session_id');
+  });
+
+  it('records exposure and completion delivery exactly once per frozen item', () => {
+    expect(migrations[4]?.statements).toContain('view_reported');
+    expect(migrations[4]?.statements).toContain('completion_reported');
   });
 });

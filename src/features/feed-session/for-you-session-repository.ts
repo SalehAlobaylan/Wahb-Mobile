@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { ForYouFeedResponse, ForYouItem } from '@/core/api';
+import { enqueueInteractionWithIds } from '@/core/outbox/outbox-repository';
 
 import { createSessionExpiry, isSessionFresh } from './feed-session-policy';
 
@@ -287,4 +288,86 @@ export async function updateForYouSessionPosition(
       position,
     );
   });
+}
+
+async function recordSessionInteraction(
+  db: SQLiteDatabase,
+  sessionId: string,
+  position: number,
+  identityScope: string,
+  kind: 'view' | 'complete',
+  metadata: Record<string, number | string>,
+  now = new Date(),
+): Promise<boolean> {
+  const reportedColumn =
+    kind === 'view' ? 'view_reported' : 'completion_reported';
+  let recorded = false;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    const item = await transaction.getFirstAsync<{ content_id: string }>(
+      `SELECT content_id
+         FROM feed_session_items
+        WHERE session_id = ? AND position = ? AND ${reportedColumn} = 0`,
+      sessionId,
+      position,
+    );
+    if (!item) {
+      return;
+    }
+    await enqueueInteractionWithIds(
+      transaction,
+      identityScope,
+      { contentId: item.content_id, type: kind, metadata },
+      Crypto.randomUUID(),
+      Crypto.randomUUID(),
+      now,
+    );
+    await transaction.runAsync(
+      `UPDATE feed_session_items
+          SET ${reportedColumn} = 1
+        WHERE session_id = ? AND position = ?`,
+      sessionId,
+      position,
+    );
+    recorded = true;
+  });
+  return recorded;
+}
+
+export function recordForYouExposure(
+  db: SQLiteDatabase,
+  sessionId: string,
+  position: number,
+  identityScope: string,
+): Promise<boolean> {
+  return recordSessionInteraction(
+    db,
+    sessionId,
+    position,
+    identityScope,
+    'view',
+    {
+      surface: 'foryou',
+    },
+  );
+}
+
+export function recordForYouCompletion(
+  db: SQLiteDatabase,
+  sessionId: string,
+  position: number,
+  identityScope: string,
+  actualPlayedSeconds: number,
+  furthestPositionSeconds: number,
+): Promise<boolean> {
+  return recordSessionInteraction(
+    db,
+    sessionId,
+    position,
+    identityScope,
+    'complete',
+    {
+      actual_played_seconds: Math.floor(actualPlayedSeconds),
+      furthest_position_seconds: Math.floor(furthestPositionSeconds),
+    },
+  );
 }

@@ -26,6 +26,7 @@ export type PlaybackSnapshot = {
   durationSeconds: number;
   bufferedPositionSeconds: number;
   isBuffering: boolean;
+  didReachEnd: boolean;
   sourceStage: 'primary' | 'fallback' | null;
   error: 'source_load_failed' | null;
 };
@@ -83,6 +84,7 @@ export function createInitialPlaybackSnapshot(): PlaybackSnapshot {
     durationSeconds: 0,
     bufferedPositionSeconds: 0,
     isBuffering: false,
+    didReachEnd: false,
     sourceStage: null,
     error: null,
   };

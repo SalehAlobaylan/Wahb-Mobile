@@ -31,6 +31,7 @@ describe('playback model', () => {
     expect(createInitialPlaybackSnapshot()).toMatchObject({
       phase: 'idle',
       rate: 1,
+      didReachEnd: false,
     });
     expect(isSupportedPlaybackRate(1.75)).toBe(true);
     expect(isSupportedPlaybackRate(1.1)).toBe(false);

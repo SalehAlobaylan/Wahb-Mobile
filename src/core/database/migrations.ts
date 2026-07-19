@@ -87,6 +87,15 @@ export const migrations: readonly Migration[] = [
         ADD COLUMN server_session_id TEXT;
     `,
   },
+  {
+    version: 5,
+    statements: `
+      ALTER TABLE feed_session_items
+        ADD COLUMN view_reported INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE feed_session_items
+        ADD COLUMN completion_reported INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {
