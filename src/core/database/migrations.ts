@@ -107,7 +107,37 @@ export const migrations: readonly Migration[] = [
       );
 
       CREATE INDEX IF NOT EXISTS idx_hidden_content_items_scope
-        ON hidden_content_items(identity_scope, created_at DESC);
+      ON hidden_content_items(identity_scope, created_at DESC);
+    `,
+  },
+  {
+    // Article snapshots are readable content, not media artifacts. Keeping
+    // these separately makes offline reading honest without pre-committing to
+    // the future download catalogue or file-store architecture.
+    version: 7,
+    statements: `
+      CREATE TABLE IF NOT EXISTS article_snapshots (
+        content_id TEXT PRIMARY KEY NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS reader_positions (
+        content_id TEXT PRIMARY KEY NOT NULL,
+        offset_y REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS opened_news_stories (
+        identity_scope TEXT NOT NULL,
+        story_id TEXT NOT NULL,
+        lead_content_id TEXT NOT NULL,
+        opened_at TEXT NOT NULL,
+        PRIMARY KEY (identity_scope, story_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_opened_news_stories_scope
+        ON opened_news_stories(identity_scope, opened_at DESC);
     `,
   },
 ] as const;

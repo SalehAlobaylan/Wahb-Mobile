@@ -104,6 +104,101 @@ export const forYouSessionResponseSchema = z
     };
   });
 
+const newsStoryMemberSchema = z
+  .object({
+    id: z.uuid(),
+    type: z.literal('NEWS'),
+    format: z.string().optional(),
+    source: z.string().optional(),
+    title: z.string().optional(),
+    excerpt: z.string().optional(),
+    body_text: z.string().optional(),
+    author: z.string().optional(),
+    source_name: z.string().optional(),
+    thumbnail_url: absoluteHttpUrl.optional(),
+    source_image_url: absoluteHttpUrl.optional(),
+    published_at: z.string().datetime(),
+    like_count: z.number().int().nonnegative(),
+    comment_count: z.number().int().nonnegative(),
+    share_count: z.number().int().nonnegative(),
+    view_count: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+const newsStorySummarySchema = z
+  .object({
+    story_id: z.uuid(),
+    lead_id: z.uuid(),
+    label: z.string(),
+    last_member_at: z.string().datetime(),
+    lifecycle: z.string(),
+    is_carryover: z.boolean().optional(),
+    reason: z.string().optional(),
+    summary: z.string().optional(),
+    bullets: z.array(z.string()).optional(),
+    category: z.string().optional(),
+    title: z.string().optional(),
+    excerpt: z.string().optional(),
+    thumbnail_url: absoluteHttpUrl.optional(),
+    source_name: z.string().optional(),
+    source_image_url: absoluteHttpUrl.optional(),
+    format: z.string().optional(),
+    source: z.string().optional(),
+    published_at: z.string().datetime(),
+    member_count: z.number().int().nonnegative(),
+    source_count: z.number().int().nonnegative().optional(),
+    like_count: z.number().int().nonnegative(),
+    comment_count: z.number().int().nonnegative(),
+    share_count: z.number().int().nonnegative(),
+    view_count: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+export const newsFeedResponseSchema = z
+  .object({
+    cursor: z.string().nullable(),
+    slides: z.array(
+      z
+        .object({
+          slide_id: z.uuid(),
+          featured: newsStorySummarySchema.extend({
+            members: z.array(newsStoryMemberSchema),
+          }),
+          related: z.array(newsStorySummarySchema).max(3),
+        })
+        .passthrough(),
+    ),
+  })
+  .passthrough();
+
+export const articleContentResponseSchema = z
+  .object({
+    code: z.number().int(),
+    message: z.string(),
+    data: z
+      .object({
+        id: z.uuid(),
+        type: z.literal('NEWS'),
+        title: z.string().nullable().optional(),
+        body_text: z.string().nullable().optional(),
+        excerpt: z.string().nullable().optional(),
+        author: z.string().nullable().optional(),
+        source_name: z.string().nullable().optional(),
+        thumbnail_url: absoluteHttpUrl.nullable().optional(),
+        original_url: absoluteHttpUrl.nullable().optional(),
+        published_at: z.string().datetime().nullable().optional(),
+        // These remain optional while CMS rolls out translated reader fields.
+        // The client only presents a translation when CMS explicitly supplies it.
+        translated_title: z.string().nullable().optional(),
+        translated_body_text: z.string().nullable().optional(),
+        translation_language: z.string().nullable().optional(),
+        is_bookmarked: z.boolean().optional(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+  .transform(({ data }) => data);
+
 export const interactionTypeSchema = z.enum([
   'like',
   'bookmark',
@@ -164,6 +259,8 @@ export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
 export type ForYouItem = z.infer<typeof forYouItemSchema>;
 export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
 export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
+export type NewsFeedResponse = z.infer<typeof newsFeedResponseSchema>;
+export type ArticleContent = z.infer<typeof articleContentResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;
 export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
 export type Transcript = z.infer<typeof transcriptResponseSchema>;

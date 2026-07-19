@@ -1,9 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  articleContentResponseSchema,
   commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
+  newsFeedResponseSchema,
   transcriptResponseSchema,
 } from './schemas';
 
@@ -97,5 +99,70 @@ describe('For You contract schema', () => {
     });
 
     expect(parsed.full_text).toBe('A real transcript from CMS.');
+  });
+});
+
+describe('News contract schemas', () => {
+  const storyId = '2d7b6eea-c0f2-4192-bdfe-7736d8385e71';
+  const memberId = '8f01d455-e0e6-411f-b345-9b95a68d5ad2';
+  const summary = {
+    story_id: storyId,
+    lead_id: memberId,
+    label: 'A developing story',
+    last_member_at: '2026-07-19T12:00:00.000Z',
+    lifecycle: 'active',
+    published_at: '2026-07-19T12:00:00.000Z',
+    member_count: 1,
+    source_count: 1,
+    like_count: 0,
+    comment_count: 0,
+    share_count: 0,
+    view_count: 0,
+  };
+
+  it('accepts one featured story and no more than three related stories', () => {
+    const parsed = newsFeedResponseSchema.parse({
+      cursor: null,
+      slides: [
+        {
+          slide_id: 'a9d3562b-e06a-42bf-bad6-31a9ddf18808',
+          featured: {
+            ...summary,
+            members: [
+              {
+                id: memberId,
+                type: 'NEWS',
+                published_at: '2026-07-19T12:00:00.000Z',
+                like_count: 0,
+                comment_count: 0,
+                share_count: 0,
+                view_count: 0,
+              },
+            ],
+          },
+          related: [],
+        },
+      ],
+    });
+
+    expect(parsed.slides[0]?.featured.story_id).toBe(storyId);
+    expect(parsed.slides[0]?.related).toHaveLength(0);
+  });
+
+  it('unwraps only a NEWS content detail response for the native reader', () => {
+    const parsed = articleContentResponseSchema.parse({
+      code: 200,
+      message: 'ok',
+      data: {
+        id: memberId,
+        type: 'NEWS',
+        title: 'A complete article',
+        body_text: 'A complete body.',
+        original_url: 'https://example.test/article',
+      },
+    });
+
+    expect(parsed.id).toBe(memberId);
+    expect(parsed.original_url).toBe('https://example.test/article');
   });
 });

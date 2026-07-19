@@ -4,10 +4,14 @@ import {
   forYouSessionResponseSchema,
   interactionResponseSchema,
   interactionTypeSchema,
+  articleContentResponseSchema,
+  newsFeedResponseSchema,
   transcriptResponseSchema,
   type ForYouFeedResponse,
   type ForYouSessionResponse,
   type InteractionType,
+  type ArticleContent,
+  type NewsFeedResponse,
   type CommentsResponse,
   type Transcript,
 } from './schemas';
@@ -23,6 +27,8 @@ export type ForYouPageRequest = {
 };
 
 export type CmsApi = {
+  getArticleContent(id: string, signal?: AbortSignal): Promise<ArticleContent>;
+  getNewsPage(request: NewsPageRequest): Promise<NewsFeedResponse>;
   getForYouPage(request: ForYouPageRequest): Promise<ForYouFeedResponse>;
   createForYouSession(
     request: ForYouSessionRequest,
@@ -37,6 +43,14 @@ export type CmsApi = {
   ): Promise<Transcript>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
   deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
+};
+
+export type NewsPageRequest = {
+  cursor?: string;
+  limit?: number;
+  installationId: string;
+  window?: 'today' | 'week' | 'month';
+  signal?: AbortSignal;
 };
 
 export type CreateInteractionRequest = {
@@ -76,6 +90,27 @@ export type CommentsRequest = {
 
 export function createCmsApi(transport: Transport): CmsApi {
   return {
+    getArticleContent(id, signal) {
+      return transport.request(
+        { path: `/api/v1/content/${id}`, signal },
+        articleContentResponseSchema,
+      );
+    },
+    getNewsPage({ cursor, limit = 10, installationId, window, signal }) {
+      return transport.request(
+        {
+          path: '/api/v1/feed/news',
+          query: {
+            ...(cursor ? { cursor } : {}),
+            ...(window ? { window } : {}),
+            limit,
+            session_id: installationId,
+          },
+          signal,
+        },
+        newsFeedResponseSchema,
+      );
+    },
     getForYouPage({
       cursor,
       limit = 10,

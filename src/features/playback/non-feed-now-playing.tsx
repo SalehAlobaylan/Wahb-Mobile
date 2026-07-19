@@ -25,7 +25,12 @@ type DismissedPlayback = {
 
 function isFeedPath(pathname: string): boolean {
   return (
-    pathname === '/' || pathname === '/news' || pathname.startsWith('/news/')
+    pathname === '/' ||
+    pathname === '/news' ||
+    pathname.startsWith('/news/') ||
+    // The only article route is the native News reader. It belongs to the
+    // News surface, whose square tile deliberately replaces this bar.
+    pathname.startsWith('/article/')
   );
 }
 

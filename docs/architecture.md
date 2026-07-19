@@ -142,6 +142,36 @@ data. Comments remain read-only until the authenticated writing slice. Likes
 and bookmarks already use the durable interaction ledger; the native share
 sheet records a share only after the operating system reports it completed.
 
+## News and reader continuity
+
+News consumes a separately runtime-validated story-slide contract: one featured
+story, no more than three related stories, explicit CMS lead/member IDs, and
+coverage provenance. It is intentionally live rather than a six-hour For You
+session. The app checks CMS at most once per 60 seconds and never replaces or
+reorders the slide currently on screen. Unseen coverage stays behind an
+explicit New Updates control; only that intentional action returns the reader
+to the first slide and changes the slide order. Cursor pagination appends
+without recycling prior slides.
+
+Opening a story records its CMS story ID in the installation-scoped SQLite
+history ledger before the reader opens. The later History surface can therefore
+retain opened stories across News refreshes without using a stale News feed as
+history storage.
+
+The native reader persists complete CMS article snapshots and a scroll offset
+in SQLite. A failed article fetch may render only that labelled saved copy; it
+does not claim current content or turn media cache into a download. Original
+Source validates HTTPS, shows the destination domain (and a warning for file
+types) before it opens an Expo in-app browser. The browser handoff is a plain
+URL with no Wahb credentials or headers. CMS-provided translation fields remain
+optional and are visibly labelled when supplied.
+
+News deliberately replaces the generic horizontal Now Playing bar with a
+square editorial tile in its header. Active artwork fills the tile, its rounded
+square progress ring reflects the one global player, tap toggles playback, and
+long press with a light haptic opens expanded controls. An idle clock/news face
+is shown when no item is active.
+
 ## Downloads
 
 Downloads are a primary planned capability, but player cache is never treated
