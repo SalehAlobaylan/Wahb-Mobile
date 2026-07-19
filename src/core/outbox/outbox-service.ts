@@ -22,13 +22,29 @@ export async function flushOutbox(
       return delivered;
     }
     try {
-      await cms.createInteraction({
-        contentId: event.payload.contentId,
-        type: event.type,
-        sessionId,
-        idempotencyKey: event.idempotencyKey,
-        ...(event.payload.metadata ? { metadata: event.payload.metadata } : {}),
-      });
+      if (event.payload.operation === 'delete') {
+        if (event.type !== 'like' && event.type !== 'bookmark') {
+          // The repository validates this before claiming, but keep the
+          // delivery boundary defensive if an older local database is corrupt.
+          await acknowledgeOutboxEvent(db, event.id);
+          continue;
+        }
+        await cms.deleteInteraction({
+          contentId: event.payload.contentId,
+          type: event.type,
+          sessionId,
+        });
+      } else {
+        await cms.createInteraction({
+          contentId: event.payload.contentId,
+          type: event.type,
+          sessionId,
+          idempotencyKey: event.idempotencyKey,
+          ...(event.payload.metadata
+            ? { metadata: event.payload.metadata }
+            : {}),
+        });
+      }
       await acknowledgeOutboxEvent(db, event.id);
       delivered += 1;
     } catch (error) {

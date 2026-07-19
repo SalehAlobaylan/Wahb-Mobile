@@ -60,13 +60,23 @@ snapshot. It is available only on the first card, confirms a successful reset
 with a native success haptic and a New Content cue, and leaves the prior frozen
 session and its progress intact on failure.
 
+The For You surface renders that ordered snapshot through a vertically paged
+native `FlatList`. Only the selected page attaches the shared video player;
+neighbouring pages render their approved artwork or audio fallback. Reaching
+the trailing pages asks the existing session for another cursor-bound page, not
+a fresh ranking request. Button navigation remains available alongside the
+swipe gesture for accessibility.
+
 ## Interaction delivery
 
 Exposure and truthful completion events already enter a durable SQLite outbox
 atomically with their frozen-session item marker, so restart cannot duplicate
 or lose the event. The classifier counts only plausible continuous playback;
 seek jumps do not create listening time. Likes, bookmarks, progress, and
-reports extend the same outbox contract later. Every mutation carries an
+reports extend the same outbox contract later. Like and bookmark create/delete
+commands are ordered in that same ledger, so a quick toggle survives restart
+and reaches CMS in the user's intended order; a replayed deletion treats an
+already-absent interaction as success. Every creation mutation carries an
 idempotency key and ordering sequence. The sender retries with backoff and
 reconciles authoritative server state. Optimistic UI must visibly resolve or
 roll back; it must never silently discard an action.
@@ -99,8 +109,9 @@ Fill are explicit visual modes, while Transcript opens the native draggable
 detail sheet. The sheet exposes CMS-backed read-only Comments and Transcript
 panels plus an About panel derived from the frozen feed item. It does not invent
 comments or transcript text when the public CMS endpoint has no approved data.
-Writing comments and durable like/bookmark actions remain in their dedicated
-M7/M8 slices.
+Comments remain read-only until the authenticated writing slice. Likes and
+bookmarks already use the durable interaction ledger; the native share sheet
+records a share only after the operating system reports it completed.
 
 ## Downloads
 

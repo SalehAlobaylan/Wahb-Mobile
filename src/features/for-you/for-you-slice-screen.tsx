@@ -2,9 +2,11 @@ import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { VideoView } from 'expo-video';
 import {
+  Bookmark,
   ChevronLeft,
   ChevronRight,
   FileText,
+  Heart,
   Info,
   Maximize2,
   MessageCircle,
@@ -13,15 +15,18 @@ import {
   Play,
   Radio,
   RotateCcw,
+  Share2,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  FlatList,
+  type LayoutChangeEvent,
   Pressable,
   RefreshControl,
   SafeAreaView,
-  ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -31,6 +36,7 @@ import { useTranslation } from 'react-i18next';
 
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import type { FrozenForYouSession } from '@/features/feed-session/for-you-session-repository';
 import {
   recordForYouCompletion,
   recordForYouExposure,
@@ -88,6 +94,14 @@ export function ForYouSliceScreen() {
   const [detailTab, setDetailTab] = useState<
     'comments' | 'transcript' | 'about' | null
   >(null);
+  const [engagement, setEngagement] = useState<
+    Record<string, { liked?: boolean; bookmarked?: boolean }>
+  >({});
+  const feedListRef =
+    useRef<FlatList<FrozenForYouSession['items'][number]>>(null);
+  const lastPagerSessionId = useRef<string | null>(null);
+  const pagerHasInteracted = useRef(false);
+  const [pageHeight, setPageHeight] = useState(0);
   const session = sessionQuery.data;
   const position =
     selection !== null && selection.sessionId === session?.id
@@ -119,6 +133,10 @@ export function ForYouSliceScreen() {
     !(position >= (session?.items.length ?? 0) - 1 && session?.cursor === null);
   const installationId = identityQuery.data;
   const identityScope = installationId ? `anonymous:${installationId}` : null;
+  const liked = item ? (engagement[item.id]?.liked ?? item.is_liked) : false;
+  const bookmarked = item
+    ? (engagement[item.id]?.bookmarked ?? item.is_bookmarked)
+    : false;
 
   const queueCompletion = useCallback(
     async (
@@ -356,6 +374,69 @@ export function ForYouSliceScreen() {
     }
   }, [playback, refreshSession]);
 
+  const toggleEngagement = useCallback(
+    async (kind: 'like' | 'bookmark') => {
+      if (!item) {
+        return;
+      }
+      const current =
+        kind === 'like'
+          ? (engagement[item.id]?.liked ?? item.is_liked)
+          : (engagement[item.id]?.bookmarked ?? item.is_bookmarked);
+      const next = !current;
+      setEngagement((existing) => ({
+        ...existing,
+        [item.id]: {
+          ...existing[item.id],
+          ...(kind === 'like' ? { liked: next } : { bookmarked: next }),
+        },
+      }));
+      try {
+        await outbox.enqueue({
+          contentId: item.id,
+          type: kind,
+          operation: next ? 'create' : 'delete',
+        });
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+      } catch (error) {
+        setEngagement((existing) => ({
+          ...existing,
+          [item.id]: {
+            ...existing[item.id],
+            ...(kind === 'like' ? { liked: current } : { bookmarked: current }),
+          },
+        }));
+        captureException('foryou_engagement_queue_failed', error, { kind });
+        void Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Warning,
+        );
+      }
+    },
+    [engagement, item, outbox],
+  );
+
+  const shareItem = useCallback(async () => {
+    if (!item) {
+      return;
+    }
+    try {
+      const result = await Share.share({
+        message: [item.title, item.source_name].filter(Boolean).join('\n'),
+      });
+      if (result.action === Share.sharedAction) {
+        await outbox.enqueue({ contentId: item.id, type: 'share' });
+      }
+    } catch (error) {
+      captureException('foryou_share_failed', error);
+    }
+  }, [item, outbox]);
+
+  const handlePagerLayout = useCallback((event: LayoutChangeEvent) => {
+    setPageHeight(event.nativeEvent.layout.height);
+  }, []);
+
   useEffect(() => {
     if (
       !pendingAutoplay ||
@@ -433,6 +514,18 @@ export function ForYouSliceScreen() {
     playback,
   ]);
 
+  useEffect(() => {
+    if (!session || pageHeight <= 0) {
+      return;
+    }
+    const animated = lastPagerSessionId.current === session.id;
+    lastPagerSessionId.current = session.id;
+    const timer = setTimeout(() => {
+      feedListRef.current?.scrollToIndex({ index: position, animated });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [pageHeight, position, session]);
+
   if (identityQuery.isPending || sessionQuery.isPending) {
     return <ForYouLoading />;
   }
@@ -446,11 +539,60 @@ export function ForYouSliceScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <ScrollView
-        alwaysBounceVertical
-        bounces
-        contentContainerStyle={styles.refreshContainer}
+    <SafeAreaView onLayout={handlePagerLayout} style={styles.safeArea}>
+      <FlatList
+        data={session.items}
+        decelerationRate="fast"
+        getItemLayout={
+          pageHeight > 0
+            ? (_, index) => ({
+                index,
+                length: pageHeight,
+                offset: pageHeight * index,
+              })
+            : undefined
+        }
+        initialNumToRender={2}
+        key={session.id}
+        keyExtractor={(entry) => `${session.id}:${entry.item.id}`}
+        maxToRenderPerBatch={3}
+        onMomentumScrollEnd={(event) => {
+          if (pageHeight <= 0) {
+            return;
+          }
+          const nextPosition = Math.max(
+            0,
+            Math.min(
+              session.items.length - 1,
+              Math.round(event.nativeEvent.contentOffset.y / pageHeight),
+            ),
+          );
+          if (nextPosition !== position) {
+            void selectPosition(nextPosition, {
+              autoplay: playback.phase === 'playing',
+            });
+          }
+        }}
+        onScrollToIndexFailed={({ index, averageItemLength }) => {
+          feedListRef.current?.scrollToOffset({
+            offset: index * averageItemLength,
+            animated: false,
+          });
+        }}
+        onEndReached={() => {
+          if (
+            pagerHasInteracted.current &&
+            position >= session.items.length - 2
+          ) {
+            void fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.5}
+        onScrollBeginDrag={() => {
+          pagerHasInteracted.current = true;
+        }}
+        pagingEnabled
+        ref={feedListRef}
         refreshControl={
           position === 0 ? (
             <RefreshControl
@@ -462,207 +604,257 @@ export function ForYouSliceScreen() {
             />
           ) : undefined
         }
-        style={styles.refreshScroll}
-      >
-        <View style={styles.card}>
-          {isVideoVisible ? (
-            <VideoView
-              player={playback.videoPlayer}
-              style={StyleSheet.absoluteFill}
-              contentFit={displayMode === 'fill' ? 'cover' : 'contain'}
-              nativeControls={false}
-            />
-          ) : item.thumbnail_url ? (
-            <Image
-              source={item.thumbnail_url}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-            />
-          ) : (
-            <View style={styles.audioFallback} />
+        removeClippedSubviews
+        renderItem={({ item: page, index }) => (
+          <View style={[styles.page, { height: pageHeight }]}>
+            {index === position && isVideoVisible ? (
+              <VideoView
+                player={playback.videoPlayer}
+                style={StyleSheet.absoluteFill}
+                contentFit={displayMode === 'fill' ? 'cover' : 'contain'}
+                nativeControls={false}
+              />
+            ) : page.item.thumbnail_url ? (
+              <Image
+                source={page.item.thumbnail_url}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={styles.audioFallback} />
+            )}
+          </View>
+        )}
+        showsVerticalScrollIndicator={false}
+        style={styles.feedPager}
+        windowSize={3}
+      />
+      <View pointerEvents="box-none" style={styles.card}>
+        <View pointerEvents="none" style={styles.overlay} />
+        <View style={styles.displayRail}>
+          <Pressable
+            accessibilityLabel={t('foryou.fit')}
+            accessibilityRole="button"
+            onPress={() => setDisplayMode('fit')}
+            style={({ pressed }) => [
+              styles.railButton,
+              displayMode === 'fit' && styles.railButtonActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Minimize2 color={colors.inkInverse} size={18} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={t('foryou.fill')}
+            accessibilityRole="button"
+            onPress={() => setDisplayMode('fill')}
+            style={({ pressed }) => [
+              styles.railButton,
+              displayMode === 'fill' && styles.railButtonActive,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Maximize2 color={colors.inkInverse} size={18} />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={t('foryou.transcript')}
+            accessibilityRole="button"
+            onPress={() => setDetailTab('transcript')}
+            style={({ pressed }) => [
+              styles.railButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <FileText color={colors.inkInverse} size={18} />
+          </Pressable>
+        </View>
+        <View style={styles.header}>
+          <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
+          {hasNewContent ? (
+            <Text style={styles.newContentLabel}>{t('foryou.newContent')}</Text>
+          ) : null}
+          <Text style={styles.sessionLabel}>
+            {position + 1} / {session.items.length}
+          </Text>
+        </View>
+
+        <View style={styles.footer}>
+          <View style={styles.metaRow}>
+            <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
+            <Text style={styles.metaText}>{item.type}</Text>
+            <Text style={styles.metaText}>
+              {formatDuration(item.duration_sec)}
+            </Text>
+          </View>
+          <Text style={styles.title} numberOfLines={3}>
+            {item.title}
+          </Text>
+          {!!item.source_name && (
+            <Text style={styles.source}>{item.source_name}</Text>
           )}
 
-          <View style={styles.overlay} />
-          <View style={styles.displayRail}>
-            <Pressable
-              accessibilityLabel={t('foryou.fit')}
-              accessibilityRole="button"
-              onPress={() => setDisplayMode('fit')}
-              style={({ pressed }) => [
-                styles.railButton,
-                displayMode === 'fit' && styles.railButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Minimize2 color={colors.inkInverse} size={18} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.fill')}
-              accessibilityRole="button"
-              onPress={() => setDisplayMode('fill')}
-              style={({ pressed }) => [
-                styles.railButton,
-                displayMode === 'fill' && styles.railButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Maximize2 color={colors.inkInverse} size={18} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.transcript')}
-              accessibilityRole="button"
-              onPress={() => setDetailTab('transcript')}
-              style={({ pressed }) => [
-                styles.railButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <FileText color={colors.inkInverse} size={18} />
-            </Pressable>
-          </View>
-          <View style={styles.header}>
-            <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
-            {hasNewContent ? (
-              <Text style={styles.newContentLabel}>
-                {t('foryou.newContent')}
-              </Text>
-            ) : null}
-            <Text style={styles.sessionLabel}>
-              {position + 1} / {session.items.length}
-            </Text>
-          </View>
-
-          <View style={styles.footer}>
-            <View style={styles.metaRow}>
-              <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
-              <Text style={styles.metaText}>{item.type}</Text>
-              <Text style={styles.metaText}>
-                {formatDuration(item.duration_sec)}
-              </Text>
-            </View>
-            <Text style={styles.title} numberOfLines={3}>
-              {item.title}
-            </Text>
-            {!!item.source_name && (
-              <Text style={styles.source}>{item.source_name}</Text>
-            )}
-
-            {playback.error && isCurrent ? (
-              <View style={styles.playbackFailure}>
-                <Text style={styles.errorText}>
-                  {t('foryou.playbackError')}
+          {playback.error && isCurrent ? (
+            <View style={styles.playbackFailure}>
+              <Text style={styles.errorText}>{t('foryou.playbackError')}</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('foryou.retry')}
+                onPress={() => void togglePlayback()}
+                style={({ pressed }) => [
+                  styles.playbackRetry,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <RotateCcw color={colors.inkInverse} size={14} />
+                <Text style={styles.playbackRetryText}>
+                  {t('foryou.retry')}
                 </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t('foryou.retry')}
-                  onPress={() => void togglePlayback()}
-                  style={({ pressed }) => [
-                    styles.playbackRetry,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <RotateCcw color={colors.inkInverse} size={14} />
-                  <Text style={styles.playbackRetryText}>
-                    {t('foryou.retry')}
-                  </Text>
-                </Pressable>
-              </View>
-            ) : null}
-            {showUpNext ? (
-              <Text style={styles.upNextText}>
-                {t('foryou.upNext', { seconds: upNextSeconds })}
+              </Pressable>
+            </View>
+          ) : null}
+          {showUpNext ? (
+            <Text style={styles.upNextText}>
+              {t('foryou.upNext', { seconds: upNextSeconds })}
+            </Text>
+          ) : null}
+
+          <View style={styles.actionRail}>
+            <Pressable
+              accessibilityLabel={liked ? t('foryou.unlike') : t('foryou.like')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: liked }}
+              onPress={() => void toggleEngagement('like')}
+              style={({ pressed }) => [
+                styles.actionButton,
+                liked && styles.actionButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Heart
+                color={colors.inkInverse}
+                fill={liked ? colors.inkInverse : 'transparent'}
+                size={22}
+              />
+              <Text style={styles.actionCount}>
+                {item.like_count + Number(liked) - Number(item.is_liked)}
               </Text>
-            ) : null}
+            </Pressable>
+            <Pressable
+              accessibilityLabel={
+                bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: bookmarked }}
+              onPress={() => void toggleEngagement('bookmark')}
+              style={({ pressed }) => [
+                styles.actionButton,
+                bookmarked && styles.actionButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Bookmark
+                color={colors.inkInverse}
+                fill={bookmarked ? colors.inkInverse : 'transparent'}
+                size={22}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.comments')}
+              accessibilityRole="button"
+              onPress={() => setDetailTab('comments')}
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <MessageCircle color={colors.inkInverse} size={22} />
+              <Text style={styles.actionCount}>{item.comment_count}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.share')}
+              accessibilityRole="button"
+              onPress={() => void shareItem()}
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Share2 color={colors.inkInverse} size={22} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.about')}
+              accessibilityRole="button"
+              onPress={() => setDetailTab('about')}
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Info color={colors.inkInverse} size={22} />
+            </Pressable>
+          </View>
 
-            <View style={styles.actionRail}>
-              <Pressable
-                accessibilityLabel={t('foryou.comments')}
-                accessibilityRole="button"
-                onPress={() => setDetailTab('comments')}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <MessageCircle color={colors.inkInverse} size={22} />
-                <Text style={styles.actionCount}>{item.comment_count}</Text>
-              </Pressable>
-              <Pressable
-                accessibilityLabel={t('foryou.about')}
-                accessibilityRole="button"
-                onPress={() => setDetailTab('about')}
-                style={({ pressed }) => [
-                  styles.actionButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Info color={colors.inkInverse} size={22} />
-              </Pressable>
-            </View>
-
-            <View style={styles.controls}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('foryou.previous')}
-                disabled={position === 0}
-                onPress={() => void selectPosition(position - 1)}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  position === 0 && styles.disabledButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <ChevronLeft color={colors.inkInverse} size={22} />
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isCurrent && playback.phase === 'playing'
-                    ? t('foryou.pause')
-                    : t('foryou.play')
-                }
-                onPress={togglePlayback}
-                style={({ pressed }) => [
-                  styles.playButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                {isCurrent && playback.phase === 'playing' ? (
-                  <Pause
-                    color={colors.inkInverse}
-                    size={26}
-                    fill={colors.inkInverse}
-                  />
-                ) : (
-                  <Play
-                    color={colors.inkInverse}
-                    size={26}
-                    fill={colors.inkInverse}
-                  />
-                )}
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={t('foryou.next')}
-                disabled={
-                  session.cursor === null &&
-                  position >= session.items.length - 1
-                }
-                onPress={() => void selectPosition(position + 1)}
-                style={({ pressed }) => [
-                  styles.secondaryButton,
-                  session.cursor === null &&
-                    position >= session.items.length - 1 &&
-                    styles.disabledButton,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <ChevronRight color={colors.inkInverse} size={22} />
-              </Pressable>
-            </View>
+          <View style={styles.controls}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('foryou.previous')}
+              disabled={position === 0}
+              onPress={() => void selectPosition(position - 1)}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                position === 0 && styles.disabledButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <ChevronLeft color={colors.inkInverse} size={22} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                isCurrent && playback.phase === 'playing'
+                  ? t('foryou.pause')
+                  : t('foryou.play')
+              }
+              onPress={togglePlayback}
+              style={({ pressed }) => [
+                styles.playButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              {isCurrent && playback.phase === 'playing' ? (
+                <Pause
+                  color={colors.inkInverse}
+                  size={26}
+                  fill={colors.inkInverse}
+                />
+              ) : (
+                <Play
+                  color={colors.inkInverse}
+                  size={26}
+                  fill={colors.inkInverse}
+                />
+              )}
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t('foryou.next')}
+              disabled={
+                session.cursor === null && position >= session.items.length - 1
+              }
+              onPress={() => void selectPosition(position + 1)}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                session.cursor === null &&
+                  position >= session.items.length - 1 &&
+                  styles.disabledButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <ChevronRight color={colors.inkInverse} size={22} />
+            </Pressable>
           </View>
         </View>
-      </ScrollView>
+      </View>
       {installationId && detailTab ? (
         <ForYouDetailSheet
           initialTab={detailTab}
@@ -719,9 +911,9 @@ function ForYouEmpty() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#000' },
-  refreshScroll: { flex: 1 },
-  refreshContainer: { flexGrow: 1 },
-  card: { flex: 1, backgroundColor: '#000', overflow: 'hidden' },
+  feedPager: { flex: 1 },
+  page: { backgroundColor: '#000', overflow: 'hidden' },
+  card: { ...StyleSheet.absoluteFill, flex: 1, overflow: 'hidden' },
   audioFallback: {
     backgroundColor: colors.ink,
     bottom: 0,
@@ -843,6 +1035,10 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     minHeight: 44,
     minWidth: 44,
+  },
+  actionButtonActive: {
+    backgroundColor: colors.pressRed,
+    borderRadius: radii.round,
   },
   actionCount: {
     color: colors.inkInverse,

@@ -12,6 +12,7 @@ import {
   type Transcript,
 } from './schemas';
 import type { Transport } from './transport';
+import { HttpError } from './errors';
 
 export type ForYouPageRequest = {
   cursor?: string;
@@ -35,6 +36,7 @@ export type CmsApi = {
     signal?: AbortSignal,
   ): Promise<Transcript>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
+  deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
 };
 
 export type CreateInteractionRequest = {
@@ -43,6 +45,13 @@ export type CreateInteractionRequest = {
   sessionId: string;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  signal?: AbortSignal;
+};
+
+export type DeleteInteractionRequest = {
+  contentId: string;
+  type: Extract<InteractionType, 'like' | 'bookmark'>;
+  sessionId: string;
   signal?: AbortSignal;
 };
 
@@ -163,6 +172,30 @@ export function createCmsApi(transport: Transport): CmsApi {
         },
         interactionResponseSchema,
       );
+    },
+    async deleteInteraction({ contentId, type, sessionId, signal }) {
+      try {
+        await transport.request(
+          {
+            path: '/api/v1/interactions',
+            method: 'DELETE',
+            query: {
+              content_item_id: contentId,
+              type,
+              session_id: sessionId,
+            },
+            signal,
+          },
+          interactionResponseSchema,
+        );
+      } catch (error) {
+        // A replayed deletion has reached its desired server state when the
+        // interaction is already absent. Treat that particular 404 as an ack.
+        if (error instanceof HttpError && error.context.status === 404) {
+          return;
+        }
+        throw error;
+      }
     },
   };
 }

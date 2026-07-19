@@ -24,6 +24,7 @@ type OutboxWriteExecutor = Pick<SQLiteDatabase, 'getFirstAsync' | 'runAsync'>;
 export type QueuedInteraction = {
   contentId: string;
   type: InteractionType;
+  operation?: 'create' | 'delete';
   metadata?: Record<string, unknown>;
 };
 
@@ -44,7 +45,13 @@ function asClaimedEvent(row: EventOutboxRow): ClaimedOutboxEvent | null {
 
   try {
     const payload = JSON.parse(row.payload_json) as QueuedInteraction;
-    if (!payload.contentId || payload.type !== row.event_type) {
+    if (
+      !payload.contentId ||
+      payload.type !== row.event_type ||
+      (payload.operation === 'delete' &&
+        payload.type !== 'like' &&
+        payload.type !== 'bookmark')
+    ) {
       return null;
     }
     return {
