@@ -1,8 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
+  transcriptResponseSchema,
 } from './schemas';
 
 const validItem = {
@@ -63,5 +65,37 @@ describe('For You contract schema', () => {
     });
 
     expect(parsed.items[0]).toHaveProperty('future_server_field');
+  });
+
+  it('parses read-only comments without accepting malformed entries', () => {
+    const parsed = commentsResponseSchema.parse({
+      cursor: null,
+      items: [
+        {
+          id: 'f14edb58-16b8-408d-a445-ae8c13a1d5a2',
+          text: 'A useful perspective.',
+          author: 'Wahb member',
+          is_mine: false,
+          created_at: '2026-07-19T12:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(parsed.items[0]?.text).toBe('A useful perspective.');
+  });
+
+  it('unwraps the CMS transcript envelope at the contract boundary', () => {
+    const parsed = transcriptResponseSchema.parse({
+      code: 200,
+      message: 'Transcript fetched successfully',
+      data: {
+        id: '594ca7ce-7e98-4e42-bb92-156df94ad0c4',
+        content_item_id: validItem.id,
+        full_text: 'A real transcript from CMS.',
+        created_at: '2026-07-19T12:00:00.000Z',
+      },
+    });
+
+    expect(parsed.full_text).toBe('A real transcript from CMS.');
   });
 });

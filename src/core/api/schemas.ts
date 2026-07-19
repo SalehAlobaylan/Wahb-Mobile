@@ -120,9 +120,50 @@ export const interactionResponseSchema = z
   })
   .passthrough();
 
+const commentItemSchema = z
+  .object({
+    id: z.uuid(),
+    text: z.string().trim().min(1),
+    author: z.string().optional(),
+    is_mine: z.boolean(),
+    created_at: z.string().datetime(),
+  })
+  .passthrough();
+
+export const commentsResponseSchema = z
+  .object({
+    cursor: z.string().nullable().optional(),
+    items: z.array(commentItemSchema),
+  })
+  .passthrough()
+  .transform((response) => ({
+    cursor: response.cursor ?? null,
+    items: response.items,
+  }));
+
+export const transcriptResponseSchema = z
+  .object({
+    code: z.number().int(),
+    message: z.string(),
+    data: z
+      .object({
+        id: z.uuid(),
+        content_item_id: z.uuid(),
+        full_text: z.string().trim().min(1),
+        summary: z.string().nullable().optional(),
+        language: z.string().nullable().optional(),
+        created_at: z.string().datetime(),
+      })
+      .passthrough(),
+  })
+  .passthrough()
+  .transform(({ data }) => data);
+
 export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
 export type ForYouItem = z.infer<typeof forYouItemSchema>;
 export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
 export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;
+export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
+export type Transcript = z.infer<typeof transcriptResponseSchema>;

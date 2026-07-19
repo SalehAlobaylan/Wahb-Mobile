@@ -92,6 +92,16 @@ countdown and can replace playback only with the next item in the same frozen
 session. Replay, manual navigation, a failed next source, or the end of that
 session cancels advancement; it never crosses into a newly ranked session.
 
+## For You detail surface
+
+The production For You surface keeps cinematic content chrome compact: Fit and
+Fill are explicit visual modes, while Transcript opens the native draggable
+detail sheet. The sheet exposes CMS-backed read-only Comments and Transcript
+panels plus an About panel derived from the frozen feed item. It does not invent
+comments or transcript text when the public CMS endpoint has no approved data.
+Writing comments and durable like/bookmark actions remain in their dedicated
+M7/M8 slices.
+
 ## Downloads
 
 Downloads are a primary planned capability, but player cache is never treated

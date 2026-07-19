@@ -4,6 +4,11 @@ import { VideoView } from 'expo-video';
 import {
   ChevronLeft,
   ChevronRight,
+  FileText,
+  Info,
+  Maximize2,
+  MessageCircle,
+  Minimize2,
   Pause,
   Play,
   Radio,
@@ -41,6 +46,8 @@ import {
 import { usePlaybackController } from '@/features/playback/playback-provider';
 import type { PlaybackItem } from '@/features/playback/playback-model';
 
+import { ForYouDetailSheet } from './for-you-detail-sheet';
+
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 function formatDuration(durationSeconds: number): string {
@@ -77,6 +84,10 @@ export function ForYouSliceScreen() {
   const [upNextSeconds, setUpNextSeconds] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasNewContent, setHasNewContent] = useState(false);
+  const [displayMode, setDisplayMode] = useState<'fit' | 'fill'>('fill');
+  const [detailTab, setDetailTab] = useState<
+    'comments' | 'transcript' | 'about' | null
+  >(null);
   const session = sessionQuery.data;
   const position =
     selection !== null && selection.sessionId === session?.id
@@ -458,7 +469,7 @@ export function ForYouSliceScreen() {
             <VideoView
               player={playback.videoPlayer}
               style={StyleSheet.absoluteFill}
-              contentFit="cover"
+              contentFit={displayMode === 'fill' ? 'cover' : 'contain'}
               nativeControls={false}
             />
           ) : item.thumbnail_url ? (
@@ -472,6 +483,43 @@ export function ForYouSliceScreen() {
           )}
 
           <View style={styles.overlay} />
+          <View style={styles.displayRail}>
+            <Pressable
+              accessibilityLabel={t('foryou.fit')}
+              accessibilityRole="button"
+              onPress={() => setDisplayMode('fit')}
+              style={({ pressed }) => [
+                styles.railButton,
+                displayMode === 'fit' && styles.railButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Minimize2 color={colors.inkInverse} size={18} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.fill')}
+              accessibilityRole="button"
+              onPress={() => setDisplayMode('fill')}
+              style={({ pressed }) => [
+                styles.railButton,
+                displayMode === 'fill' && styles.railButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Maximize2 color={colors.inkInverse} size={18} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.transcript')}
+              accessibilityRole="button"
+              onPress={() => setDetailTab('transcript')}
+              style={({ pressed }) => [
+                styles.railButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <FileText color={colors.inkInverse} size={18} />
+            </Pressable>
+          </View>
           <View style={styles.header}>
             <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
             {hasNewContent ? (
@@ -525,6 +573,32 @@ export function ForYouSliceScreen() {
                 {t('foryou.upNext', { seconds: upNextSeconds })}
               </Text>
             ) : null}
+
+            <View style={styles.actionRail}>
+              <Pressable
+                accessibilityLabel={t('foryou.comments')}
+                accessibilityRole="button"
+                onPress={() => setDetailTab('comments')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MessageCircle color={colors.inkInverse} size={22} />
+                <Text style={styles.actionCount}>{item.comment_count}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={t('foryou.about')}
+                accessibilityRole="button"
+                onPress={() => setDetailTab('about')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Info color={colors.inkInverse} size={22} />
+              </Pressable>
+            </View>
 
             <View style={styles.controls}>
               <Pressable
@@ -589,6 +663,15 @@ export function ForYouSliceScreen() {
           </View>
         </View>
       </ScrollView>
+      {installationId && detailTab ? (
+        <ForYouDetailSheet
+          initialTab={detailTab}
+          installationId={installationId}
+          item={item}
+          onClose={() => setDetailTab(null)}
+          visible
+        />
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -662,6 +745,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
+  displayRail: {
+    gap: spacing.sm,
+    position: 'absolute',
+    right: spacing.md,
+    top: 78,
+  },
+  railButton: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.38)',
+    borderColor: 'rgba(248,245,242,0.54)',
+    borderRadius: radii.round,
+    borderWidth: 1,
+    height: 42,
+    justifyContent: 'center',
+    width: 42,
+  },
+  railButtonActive: {
+    backgroundColor: colors.pressRed,
+    borderColor: colors.pressRed,
+  },
   feedLabel: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
@@ -727,6 +830,24 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.bodyBold,
     fontSize: 13,
     marginTop: spacing.sm,
+  },
+  actionRail: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  actionButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 44,
+    minWidth: 44,
+  },
+  actionCount: {
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.mono,
+    fontSize: 12,
   },
   controls: {
     alignItems: 'center',

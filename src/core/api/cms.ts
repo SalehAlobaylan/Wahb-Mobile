@@ -1,11 +1,15 @@
 import {
+  commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
   interactionResponseSchema,
   interactionTypeSchema,
+  transcriptResponseSchema,
   type ForYouFeedResponse,
   type ForYouSessionResponse,
   type InteractionType,
+  type CommentsResponse,
+  type Transcript,
 } from './schemas';
 import type { Transport } from './transport';
 
@@ -25,6 +29,11 @@ export type CmsApi = {
   getForYouSessionPage(
     request: ForYouSessionPageRequest,
   ): Promise<ForYouSessionResponse>;
+  getComments(request: CommentsRequest): Promise<CommentsResponse>;
+  getTranscript(
+    transcriptId: string,
+    signal?: AbortSignal,
+  ): Promise<Transcript>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
 };
 
@@ -46,6 +55,14 @@ export type ForYouSessionRequest = {
 export type ForYouSessionPageRequest = ForYouSessionRequest & {
   sessionId: string;
   cursor?: string;
+};
+
+export type CommentsRequest = {
+  contentId: string;
+  installationId: string;
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
 };
 
 export function createCmsApi(transport: Transport): CmsApi {
@@ -100,6 +117,26 @@ export function createCmsApi(transport: Transport): CmsApi {
           signal,
         },
         forYouSessionResponseSchema,
+      );
+    },
+    getComments({ contentId, installationId, cursor, limit = 20, signal }) {
+      return transport.request(
+        {
+          path: `/api/v1/content/${contentId}/comments`,
+          query: {
+            ...(cursor ? { cursor } : {}),
+            limit,
+            session_id: installationId,
+          },
+          signal,
+        },
+        commentsResponseSchema,
+      );
+    },
+    getTranscript(transcriptId, signal) {
+      return transport.request(
+        { path: `/api/v1/transcripts/${transcriptId}`, signal },
+        transcriptResponseSchema,
       );
     },
     async createInteraction({
