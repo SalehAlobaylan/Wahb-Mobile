@@ -89,6 +89,21 @@ export const forYouFeedResponseSchema = z
     };
   });
 
+export const forYouSessionResponseSchema = z
+  .object({
+    session_id: z.uuid(),
+    expires_at: z.string().datetime(),
+  })
+  .passthrough()
+  .transform((response) => {
+    const page = forYouFeedResponseSchema.parse(response);
+    return {
+      ...page,
+      serverSessionId: response.session_id,
+      expiresAt: response.expires_at,
+    };
+  });
+
 export const interactionTypeSchema = z.enum([
   'like',
   'bookmark',
@@ -109,4 +124,5 @@ export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
 export type ForYouItem = z.infer<typeof forYouItemSchema>;
 export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
+export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;

@@ -7,6 +7,7 @@ import { createSessionExpiry, isSessionFresh } from './feed-session-policy';
 
 type SessionRow = {
   id: string;
+  server_session_id: string | null;
   cursor: string | null;
   status: 'active' | 'exhausted';
   active_position: number;
@@ -22,6 +23,7 @@ type SessionItemRow = {
 
 export type FrozenForYouSession = {
   id: string;
+  serverSessionId: string | null;
   cursor: string | null;
   activePosition: number;
   createdAt: string;
@@ -42,7 +44,7 @@ export async function loadFreshForYouSession(
   now = new Date(),
 ): Promise<FrozenForYouSession | null> {
   const session = await db.getFirstAsync<SessionRow>(
-    `SELECT id, cursor, status, active_position, created_at, expires_at
+    `SELECT id, server_session_id, cursor, status, active_position, created_at, expires_at
        FROM feed_sessions
       WHERE feed_type = 'foryou'
         AND identity_scope = ?
@@ -83,6 +85,7 @@ export async function loadFreshForYouSession(
 
     return {
       id: session.id,
+      serverSessionId: session.server_session_id,
       cursor: session.cursor,
       activePosition: Math.min(session.active_position, items.length - 1),
       createdAt: session.created_at,
@@ -159,7 +162,7 @@ export async function appendForYouSessionPage(
   });
 
   const row = await db.getFirstAsync<SessionRow>(
-    `SELECT id, cursor, status, active_position, created_at, expires_at
+    `SELECT id, server_session_id, cursor, status, active_position, created_at, expires_at
        FROM feed_sessions
       WHERE id = ?`,
     sessionId,
@@ -177,6 +180,7 @@ export async function appendForYouSessionPage(
   try {
     return {
       id: row.id,
+      serverSessionId: row.server_session_id,
       cursor: row.cursor,
       activePosition: Math.min(row.active_position, items.length - 1),
       createdAt: row.created_at,
@@ -195,11 +199,21 @@ export async function materializeForYouSession(
   db: SQLiteDatabase,
   identityScope: string,
   page: ForYouFeedResponse,
+  serverSessionId: string | null,
+  expiresAt: string,
   now = new Date(),
 ): Promise<FrozenForYouSession> {
   const sessionId = Crypto.randomUUID();
   const createdAt = nowIso(now);
-  const expiresAt = nowIso(createSessionExpiry(now));
+  const localExpiresAt = nowIso(createSessionExpiry(now));
+  const expiry = new Date(expiresAt);
+  const effectiveExpiresAt = Number.isNaN(expiry.getTime())
+    ? localExpiresAt
+    : nowIso(
+        expiry.getTime() < new Date(localExpiresAt).getTime()
+          ? expiry
+          : new Date(localExpiresAt),
+      );
 
   await db.withExclusiveTransactionAsync(async (transaction) => {
     await transaction.runAsync(
@@ -213,13 +227,14 @@ export async function materializeForYouSession(
     );
     await transaction.runAsync(
       `INSERT INTO feed_sessions
-        (id, feed_type, identity_scope, cursor, status, created_at, expires_at, active_position, updated_at)
-       VALUES (?, 'foryou', ?, ?, 'active', ?, ?, 0, ?)`,
+        (id, feed_type, identity_scope, server_session_id, cursor, status, created_at, expires_at, active_position, updated_at)
+       VALUES (?, 'foryou', ?, ?, ?, 'active', ?, ?, 0, ?)`,
       sessionId,
       identityScope,
+      serverSessionId,
       page.cursor,
       createdAt,
-      expiresAt,
+      effectiveExpiresAt,
       createdAt,
     );
 
@@ -238,10 +253,11 @@ export async function materializeForYouSession(
 
   return {
     id: sessionId,
+    serverSessionId,
     cursor: page.cursor,
     activePosition: 0,
     createdAt,
-    expiresAt,
+    expiresAt: effectiveExpiresAt,
     items: page.items.map((item) => ({ item, playbackPositionMs: 0 })),
   };
 }

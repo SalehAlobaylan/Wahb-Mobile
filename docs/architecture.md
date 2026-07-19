@@ -48,8 +48,11 @@ that session; UI rerenders never reshuffle it. The local `feed_sessions` and
 restart and honest offline restoration.
 
 The server remains responsible for candidate selection, personalization,
-repetition windows, and feed policy. The app supplies stable session/cursor
-context and must not silently mix old inventory into a new session.
+repetition windows, and feed policy. `POST /api/v1/feed/foryou/sessions`
+creates a six-hour frozen, identity-scoped CMS snapshot; the app persists its
+opaque server session ID alongside the SQLite recovery ledger and only appends
+pages from that session. It must not silently mix old inventory into a new
+session.
 
 ## Interaction delivery
 

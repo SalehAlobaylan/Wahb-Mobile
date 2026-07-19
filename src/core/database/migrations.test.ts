@@ -4,7 +4,7 @@ import { migrations } from './migrations';
 
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
-    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3]);
+    expect(migrations.map(({ version }) => version)).toEqual([1, 2, 3, 4]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
     );
@@ -23,5 +23,9 @@ describe('database migrations', () => {
 
   it('keeps permanent outbox rejections auditable without retrying them', () => {
     expect(migrations[2]?.statements).toContain('event_outbox_rejections');
+  });
+
+  it('links recovery-ledger sessions to the CMS-owned frozen session', () => {
+    expect(migrations[3]?.statements).toContain('server_session_id');
   });
 });

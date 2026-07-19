@@ -55,6 +55,7 @@ export function ForYouSliceScreen() {
       item
         ? {
             id: item.id,
+            contentType: item.type,
             title: item.title,
             ...(item.source_name ? { sourceName: item.source_name } : {}),
             ...(item.thumbnail_url ? { artworkUrl: item.thumbnail_url } : {}),
@@ -80,6 +81,12 @@ export function ForYouSliceScreen() {
     playback.pause();
     setSelection({ sessionId: session.id, position: nextPosition });
     try {
+      await updateForYouSessionPosition(
+        db,
+        session.id,
+        position,
+        playback.currentTimeSeconds * 1_000,
+      );
       await updateForYouSessionPosition(db, session.id, nextPosition, 0);
     } catch (error) {
       captureException('feed_session_position_write_failed', error);

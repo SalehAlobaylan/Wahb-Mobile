@@ -3,6 +3,7 @@ import { useCallback, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import { createServiceClients } from '@/core/api';
+import { captureException } from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
 
 import {
@@ -24,6 +25,7 @@ export function useForYouSession() {
   // A zero epoch is equivalent to a fully replenished bucket on first use and
   // avoids reading the clock during render.
   const paginationBudget = useRef(createPaginationBudget(0));
+  const paginationInFlight = useRef(false);
   const identityQuery = useQuery({
     queryKey: ['installation-identity'],
     queryFn: getInstallationId,
@@ -46,12 +48,18 @@ export function useForYouSession() {
         return restored;
       }
 
-      const page = await cms.getForYouPage({
+      const page = await cms.createForYouSession({
         installationId,
         limit: 10,
         signal,
       });
-      return materializeForYouSession(db, identityScope, page);
+      return materializeForYouSession(
+        db,
+        identityScope,
+        page,
+        page.serverSessionId,
+        page.expiresAt,
+      );
     },
   });
 
@@ -60,7 +68,10 @@ export function useForYouSession() {
       return false;
     }
     const current = sessionQuery.data;
-    if (!current?.cursor) {
+    if (!current?.cursor || !current.serverSessionId) {
+      return false;
+    }
+    if (paginationInFlight.current) {
       return false;
     }
     const budget = consumePaginationToken(paginationBudget.current, Date.now());
@@ -68,17 +79,26 @@ export function useForYouSession() {
     if (!budget.allowed) {
       return false;
     }
-    const page = await cms.getForYouPage({
-      installationId,
-      cursor: current.cursor,
-      limit: 10,
-    });
-    const updated = await appendForYouSessionPage(db, current.id, page);
-    if (updated) {
-      queryClient.setQueryData(['foryou-session', installationId], updated);
-      return true;
+    paginationInFlight.current = true;
+    try {
+      const page = await cms.getForYouSessionPage({
+        installationId,
+        sessionId: current.serverSessionId,
+        cursor: current.cursor,
+        limit: 10,
+      });
+      const updated = await appendForYouSessionPage(db, current.id, page);
+      if (updated) {
+        queryClient.setQueryData(['foryou-session', installationId], updated);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      captureException('foryou_session_page_failed', error);
+      return false;
+    } finally {
+      paginationInFlight.current = false;
     }
-    return false;
   }, [db, installationId, queryClient, sessionQuery.data]);
 
   const refreshSession = useCallback(async () => {
@@ -87,11 +107,13 @@ export function useForYouSession() {
     }
     // Materialization expires the prior session only after this request has
     // succeeded, so a failed refresh leaves the current frozen session intact.
-    const page = await cms.getForYouPage({ installationId, limit: 10 });
+    const page = await cms.createForYouSession({ installationId, limit: 10 });
     const updated = await materializeForYouSession(
       db,
       `anonymous:${installationId}`,
       page,
+      page.serverSessionId,
+      page.expiresAt,
     );
     queryClient.setQueryData(['foryou-session', installationId], updated);
   }, [db, installationId, queryClient]);

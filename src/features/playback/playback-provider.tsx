@@ -20,11 +20,18 @@ import { captureException } from '@/core/diagnostics/diagnostics';
 
 import {
   createInitialPlaybackSnapshot,
+  defaultPlaybackRates,
   isSupportedPlaybackRate,
+  playbackRateClassFor,
   resolvePlaybackKind,
   type PlaybackItem,
+  type PlaybackRateDefaults,
   type PlaybackSnapshot,
 } from './playback-model';
+import {
+  readPlaybackRateDefaults,
+  writePlaybackRateDefault,
+} from './playback-rate-preferences';
 import {
   attemptsForSource,
   remotePlaybackSourceResolver,
@@ -63,16 +70,36 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const videoPlaying = useEvent(videoPlayer, 'playingChange', {
     isPlaying: videoPlayer.playing,
   });
+  const videoTimeUpdate = useEvent(videoPlayer, 'timeUpdate', {
+    currentTime: videoPlayer.currentTime,
+    currentLiveTimestamp: null,
+    currentOffsetFromLive: null,
+    bufferedPosition: videoPlayer.bufferedPosition,
+  });
   const [snapshot, setSnapshot] = useState(createInitialPlaybackSnapshot);
+  const [rateDefaults, setRateDefaults] =
+    useState<PlaybackRateDefaults>(defaultPlaybackRates);
   const operation = useRef(0);
   const videoPlayerRef = useRef(videoPlayer);
   const audioPlayerRef = useRef(audioPlayer);
+  const rateDefaultsRef = useRef(rateDefaults);
+
+  useEffect(() => {
+    rateDefaultsRef.current = rateDefaults;
+  }, [rateDefaults]);
 
   useEffect(() => {
     void setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
       interruptionMode: 'doNotMix',
+    });
+  }, []);
+
+  useEffect(() => {
+    void readPlaybackRateDefaults().then((defaults) => {
+      rateDefaultsRef.current = defaults;
+      setRateDefaults(defaults);
     });
   }, []);
 
@@ -88,12 +115,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             ? 'playing'
             : 'paused'
           : 'idle';
-
   const start = useCallback(
     async (item: PlaybackItem, options: StartPlaybackOptions = {}) => {
       const request = ++operation.current;
       const kind = resolvePlaybackKind(item.playback);
-      const rate = snapshot.rate;
+      const rate = rateDefaultsRef.current[playbackRateClassFor(item)];
       const positionSeconds = options.positionSeconds ?? 0;
       const autoplay = options.autoplay ?? true;
       const video = videoPlayerRef.current;
@@ -110,6 +136,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         kind,
         phase: 'loading',
         rate,
+        currentTimeSeconds: 0,
+        durationSeconds: 0,
+        bufferedPositionSeconds: 0,
+        isBuffering: false,
         sourceStage: null,
         error: null,
       });
@@ -203,7 +233,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           : current,
       );
     },
-    [snapshot.rate],
+    [],
   );
 
   const play = useCallback(() => {
@@ -247,8 +277,19 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         audioPlayerRef.current.setPlaybackRate(rate);
       }
       setSnapshot((current) => ({ ...current, rate }));
+      if (snapshot.item) {
+        const rateClass = playbackRateClassFor(snapshot.item);
+        void writePlaybackRateDefault(
+          rateDefaultsRef.current,
+          rateClass,
+          rate,
+        ).then((defaults) => {
+          rateDefaultsRef.current = defaults;
+          setRateDefaults(defaults);
+        });
+      }
     },
-    [snapshot.kind],
+    [snapshot.item, snapshot.kind],
   );
 
   const dismiss = useCallback(() => {
@@ -260,10 +301,32 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     setSnapshot(createInitialPlaybackSnapshot());
   }, []);
 
-  const controller = useMemo<PlaybackController>(
-    () => ({
+  const controller = useMemo<PlaybackController>(() => {
+    const playbackMetrics =
+      snapshot.kind === 'video'
+        ? {
+            currentTimeSeconds: videoTimeUpdate.currentTime,
+            durationSeconds: videoPlayer.duration,
+            bufferedPositionSeconds: videoTimeUpdate.bufferedPosition,
+            isBuffering: videoPlayer.status === 'loading',
+          }
+        : snapshot.kind === 'audio'
+          ? {
+              currentTimeSeconds: audioStatus.currentTime,
+              durationSeconds: audioStatus.duration,
+              bufferedPositionSeconds: audioStatus.currentTime,
+              isBuffering: audioStatus.isBuffering,
+            }
+          : {
+              currentTimeSeconds: 0,
+              durationSeconds: 0,
+              bufferedPositionSeconds: 0,
+              isBuffering: false,
+            };
+    return {
       ...snapshot,
       phase,
+      ...playbackMetrics,
       videoPlayer,
       start,
       play,
@@ -271,19 +334,20 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       seekBy,
       setRate,
       dismiss,
-    }),
-    [
-      dismiss,
-      pause,
-      phase,
-      play,
-      seekBy,
-      setRate,
-      snapshot,
-      start,
-      videoPlayer,
-    ],
-  );
+    };
+  }, [
+    dismiss,
+    audioStatus,
+    pause,
+    phase,
+    play,
+    seekBy,
+    setRate,
+    snapshot,
+    start,
+    videoTimeUpdate,
+    videoPlayer,
+  ]);
 
   return (
     <PlaybackContext.Provider value={controller}>

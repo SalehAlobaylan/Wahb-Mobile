@@ -80,6 +80,13 @@ export const migrations: readonly Migration[] = [
         ON event_outbox_rejections(created_at DESC);
     `,
   },
+  {
+    version: 4,
+    statements: `
+      ALTER TABLE feed_sessions
+        ADD COLUMN server_session_id TEXT;
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

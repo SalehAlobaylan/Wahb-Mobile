@@ -1,6 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { forYouFeedResponseSchema } from './schemas';
+import {
+  forYouFeedResponseSchema,
+  forYouSessionResponseSchema,
+} from './schemas';
 
 const validItem = {
   id: '4f34066e-9899-4a78-9d79-6dc278151f00',
@@ -41,6 +44,17 @@ describe('For You contract schema', () => {
 
     expect(parsed.items).toHaveLength(1);
     expect(parsed.quarantinedItemCount).toBe(1);
+  });
+
+  it('requires a CMS-owned session identifier when parsing frozen pages', () => {
+    const parsed = forYouSessionResponseSchema.parse({
+      session_id: 'b4a7e91c-9227-4c51-9fa8-9955e1e4c139',
+      expires_at: '2026-07-19T18:00:00.000Z',
+      cursor: null,
+      items: [validItem],
+    });
+
+    expect(parsed.serverSessionId).toBe('b4a7e91c-9227-4c51-9fa8-9955e1e4c139');
   });
 
   it('tolerates additive CMS fields', () => {
