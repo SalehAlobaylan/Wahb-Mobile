@@ -22,7 +22,15 @@ export async function flushOutbox(
       return delivered;
     }
     try {
-      if (event.payload.operation === 'delete') {
+      if (event.payload.type === 'report') {
+        await cms.reportModeration({
+          targetType: event.payload.targetType,
+          targetId: event.payload.targetId,
+          reason: event.payload.reason,
+          ...(event.payload.detail ? { detail: event.payload.detail } : {}),
+          idempotencyKey: event.idempotencyKey,
+        });
+      } else if (event.payload.operation === 'delete') {
         if (event.type !== 'like' && event.type !== 'bookmark') {
           // The repository validates this before claiming, but keep the
           // delivery boundary defensive if an older local database is corrupt.
@@ -37,7 +45,7 @@ export async function flushOutbox(
       } else {
         await cms.createInteraction({
           contentId: event.payload.contentId,
-          type: event.type,
+          type: event.payload.type,
           sessionId,
           idempotencyKey: event.idempotencyKey,
           ...(event.payload.metadata

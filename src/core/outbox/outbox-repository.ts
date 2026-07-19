@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import type { InteractionType } from '@/core/api';
+import type { InteractionType, ModerationReason } from '@/core/api';
 
 import {
   decideRetry,
@@ -28,11 +28,21 @@ export type QueuedInteraction = {
   metadata?: Record<string, unknown>;
 };
 
+export type QueuedModerationReport = {
+  type: 'report';
+  targetType: 'content' | 'comment';
+  targetId: string;
+  reason: ModerationReason;
+  detail?: string;
+};
+
+export type QueuedOutboxEvent = QueuedInteraction | QueuedModerationReport;
+
 export type ClaimedOutboxEvent = {
   id: string;
   identityScope: string;
   type: OutboxEventType;
-  payload: QueuedInteraction;
+  payload: QueuedOutboxEvent;
   idempotencyKey: string;
   sequence: number;
   attemptCount: number;
@@ -44,7 +54,21 @@ function asClaimedEvent(row: EventOutboxRow): ClaimedOutboxEvent | null {
   }
 
   try {
-    const payload = JSON.parse(row.payload_json) as QueuedInteraction;
+    const payload = JSON.parse(row.payload_json) as QueuedOutboxEvent;
+    if (payload.type === 'report') {
+      if (!payload.targetId || !payload.targetType || !payload.reason) {
+        return null;
+      }
+      return {
+        id: row.id,
+        identityScope: row.identity_scope,
+        type: row.event_type,
+        payload,
+        idempotencyKey: row.idempotency_key,
+        sequence: row.sequence,
+        attemptCount: row.attempt_count,
+      };
+    }
     if (
       !payload.contentId ||
       payload.type !== row.event_type ||
@@ -71,7 +95,7 @@ function asClaimedEvent(row: EventOutboxRow): ClaimedOutboxEvent | null {
 export async function enqueueInteraction(
   db: SQLiteDatabase,
   identityScope: string,
-  interaction: QueuedInteraction,
+  interaction: QueuedOutboxEvent,
   now = new Date(),
 ): Promise<string> {
   const id = Crypto.randomUUID();
@@ -91,7 +115,7 @@ export async function enqueueInteraction(
 export async function enqueueInteractionWithIds(
   db: OutboxWriteExecutor,
   identityScope: string,
-  interaction: QueuedInteraction,
+  interaction: QueuedOutboxEvent,
   id: string,
   idempotencyKey: string,
   now = new Date(),

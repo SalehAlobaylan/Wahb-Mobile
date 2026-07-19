@@ -39,6 +39,11 @@ export const resources = {
         sheetHandle: 'اسحب لتوسيع التفاصيل أو تصغيرها',
         sheetGestureHint: 'اسحب لأعلى للتوسيع أو لأسفل للتصغير أو الإغلاق',
         noComments: 'لا توجد تعليقات حتى الآن.',
+        commentInput: 'اكتب تعليقًا',
+        commentPlaceholder: 'أضف تعليقًا محترمًا…',
+        commentSignIn: 'سجّل الدخول لإضافة تعليق',
+        commentPost: 'نشر',
+        deleteComment: 'حذف',
         commentsUnavailable: 'تعذّر تحميل التعليقات.',
         noTranscript: 'لا يتوفر نص معتمد لهذا العنصر.',
         transcriptUnavailable: 'تعذّر تحميل النص.',
@@ -187,7 +192,8 @@ export const resources = {
         save: 'حفظ التغييرات',
         saved: 'تم حفظ التغييرات.',
         interestsTitle: 'اختر اهتماماتك',
-        interestsCopy: 'تُرسل هذه التفضيلات إلى وهب لتحسين الترتيب. لا تُستخدم لتصفية المحتوى محليًا.',
+        interestsCopy:
+          'تُرسل هذه التفضيلات إلى وهب لتحسين الترتيب. لا تُستخدم لتصفية المحتوى محليًا.',
         saveInterests: 'حفظ الاهتمامات',
       },
       settings: {
@@ -197,8 +203,27 @@ export const resources = {
         arabic: 'العربية',
         english: 'English',
         both: 'كلاهما',
-        rtlNote: 'سيطبّق اتجاه الواجهة بالكامل عند فتح التطبيق في المرة التالية.',
-        contentNote: 'لغة المحتوى تفضيل تسليم وليست اهتمامًا. لا يفلتر التطبيق المحتوى محليًا.',
+        rtlNote:
+          'سيطبّق اتجاه الواجهة بالكامل عند فتح التطبيق في المرة التالية.',
+        contentNote:
+          'لغة المحتوى تفضيل تسليم وليست اهتمامًا. لا يفلتر التطبيق المحتوى محليًا.',
+      },
+      moderation: {
+        reportTitle: 'الإبلاغ عن محتوى',
+        reportCopy:
+          'سيُخفى هذا الهدف عنك بعد الإبلاغ بينما يراجعه فريق الإشراف.',
+        submit: 'إرسال البلاغ',
+        detail: 'اشرح المشكلة',
+        report: 'إبلاغ',
+        block: 'حظر الكاتب',
+        reason: {
+          harmful_inappropriate: 'ضار أو غير مناسب',
+          misinformation: 'معلومات مضللة',
+          copyright: 'حقوق النشر',
+          broken_media: 'وسائط معطلة',
+          incorrect_language_translation: 'لغة أو ترجمة غير صحيحة',
+          other: 'أخرى',
+        },
       },
     },
   },
@@ -243,6 +268,11 @@ export const resources = {
         sheetHandle: 'Drag to expand or collapse details',
         sheetGestureHint: 'Swipe up to expand or down to collapse or close',
         noComments: 'No comments yet.',
+        commentInput: 'Write a comment',
+        commentPlaceholder: 'Add a respectful comment…',
+        commentSignIn: 'Sign in to add a comment',
+        commentPost: 'Post',
+        deleteComment: 'Delete',
         commentsUnavailable: 'Comments could not load.',
         noTranscript: 'No approved transcript is available for this item.',
         transcriptUnavailable: 'Transcript could not load.',
@@ -397,7 +427,8 @@ export const resources = {
         save: 'Save changes',
         saved: 'Changes saved.',
         interestsTitle: 'Choose your interests',
-        interestsCopy: 'These preferences are sent to Wahb to improve ranking. They never filter content locally.',
+        interestsCopy:
+          'These preferences are sent to Wahb to improve ranking. They never filter content locally.',
         saveInterests: 'Save interests',
       },
       settings: {
@@ -407,8 +438,27 @@ export const resources = {
         arabic: 'Arabic',
         english: 'English',
         both: 'Both',
-        rtlNote: 'The complete layout direction applies the next time the app opens.',
-        contentNote: 'Content language is a delivery preference, not an interest. The app never filters content locally.',
+        rtlNote:
+          'The complete layout direction applies the next time the app opens.',
+        contentNote:
+          'Content language is a delivery preference, not an interest. The app never filters content locally.',
+      },
+      moderation: {
+        reportTitle: 'Report content',
+        reportCopy:
+          'After reporting, this target is hidden for you while the moderation team reviews it.',
+        submit: 'Send report',
+        detail: 'Describe the issue',
+        report: 'Report',
+        block: 'Block author',
+        reason: {
+          harmful_inappropriate: 'Harmful or inappropriate',
+          misinformation: 'Misinformation',
+          copyright: 'Copyright',
+          broken_media: 'Broken media',
+          incorrect_language_translation: 'Incorrect language or translation',
+          other: 'Other',
+        },
       },
     },
   },

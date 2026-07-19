@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { hapticLightImpact, hapticSelection } from '@/core/haptics/feedback';
 import { useMemo, useState, type ReactNode } from 'react';
 import {
@@ -9,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -18,6 +20,8 @@ import { useTranslation } from 'react-i18next';
 import type { ForYouItem } from '@/core/api';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
+import { useOutbox } from '@/core/outbox/outbox-provider';
+import { ReportSheet } from '@/features/moderation/report-sheet';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
 
@@ -37,10 +41,20 @@ export function ForYouDetailSheet({
   onClose,
 }: ForYouDetailSheetProps) {
   const { t } = useTranslation();
-  const { clients } = useAuth();
+  const router = useRouter();
+  const { clients, subject } = useAuth();
+  const outbox = useOutbox();
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const [expanded, setExpanded] = useState(initialTab === 'transcript');
+  const [commentDraft, setCommentDraft] = useState('');
+  const [reportCommentId, setReportCommentId] = useState<string | null>(null);
+  const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [blockedAuthorIds, setBlockedAuthorIds] = useState<Set<string>>(
+    new Set(),
+  );
   const selectTab = (nextTab: DetailTab) => {
     if (nextTab === tab) {
       return;
@@ -69,11 +83,53 @@ export function ForYouDetailSheet({
     [expanded, onClose],
   );
   const commentsQuery = useQuery({
-    queryKey: ['content-comments', item.id, installationId],
+    queryKey: ['content-comments', item.id, installationId, subject?.id],
     queryFn: () =>
-      clients.cms.getComments({ contentId: item.id, installationId, limit: 20 }),
+      clients.cms.getComments({
+        contentId: item.id,
+        installationId,
+        limit: 20,
+      }),
     enabled: visible && tab === 'comments',
   });
+  const submitComment = async () => {
+    const text = commentDraft.trim();
+    if (!subject) {
+      router.push('/sign-in');
+      return;
+    }
+    if (!text) {
+      return;
+    }
+    await outbox.enqueue({
+      contentId: item.id,
+      type: 'comment',
+      metadata: { text },
+    });
+    setCommentDraft('');
+    await commentsQuery.refetch();
+  };
+  const deleteComment = async (commentId: string) => {
+    await clients.cms.deleteComment(commentId, installationId);
+    await commentsQuery.refetch();
+  };
+  const blockAuthor = async (authorId: string) => {
+    setBlockedAuthorIds((current) => new Set(current).add(authorId));
+    try {
+      await clients.cms.blockAuthor(authorId);
+    } catch {
+      setBlockedAuthorIds((current) => {
+        const next = new Set(current);
+        next.delete(authorId);
+        return next;
+      });
+    }
+  };
+  const visibleComments = (commentsQuery.data?.items ?? []).filter(
+    (comment) =>
+      !hiddenCommentIds.has(comment.id) &&
+      !(comment.author_id && blockedAuthorIds.has(comment.author_id)),
+  );
   const transcriptQuery = useQuery({
     queryKey: ['transcript', item.transcript_id],
     queryFn: () => clients.cms.getTranscript(item.transcript_id!),
@@ -147,8 +203,15 @@ export function ForYouDetailSheet({
               <CommentsPanel
                 isError={commentsQuery.isError}
                 isLoading={commentsQuery.isLoading}
+                canComment={Boolean(subject)}
+                draft={commentDraft}
+                onChangeDraft={setCommentDraft}
+                onBlock={blockAuthor}
+                onDelete={deleteComment}
+                onReport={(commentId) => setReportCommentId(commentId)}
                 onRetry={() => void commentsQuery.refetch()}
-                comments={commentsQuery.data?.items ?? []}
+                onSubmit={() => void submitComment()}
+                comments={visibleComments}
               />
             ) : null}
             {tab === 'transcript' ? (
@@ -164,6 +227,20 @@ export function ForYouDetailSheet({
           </ScrollView>
         </View>
       </View>
+      <ReportSheet
+        onClose={() => setReportCommentId(null)}
+        onReported={() => {
+          if (reportCommentId) {
+            setHiddenCommentIds((current) =>
+              new Set(current).add(reportCommentId),
+            );
+          }
+        }}
+        target={
+          reportCommentId ? { type: 'comment', id: reportCommentId } : null
+        }
+        visible={Boolean(reportCommentId)}
+      />
     </Modal>
   );
 }
@@ -202,12 +279,32 @@ function CommentsPanel({
   comments,
   isError,
   isLoading,
+  canComment,
+  draft,
+  onChangeDraft,
+  onBlock,
+  onDelete,
+  onReport,
   onRetry,
+  onSubmit,
 }: {
-  comments: { id: string; text: string; author?: string }[];
+  comments: {
+    id: string;
+    text: string;
+    author?: string;
+    author_id?: string | null;
+    is_mine: boolean;
+  }[];
   isError: boolean;
   isLoading: boolean;
+  canComment: boolean;
+  draft: string;
+  onChangeDraft: (value: string) => void;
+  onBlock: (authorId: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+  onReport: (id: string) => void;
   onRetry: () => void;
+  onSubmit: () => void;
 }) {
   const { t } = useTranslation();
   if (isLoading) {
@@ -218,16 +315,78 @@ function CommentsPanel({
       <RetryPanel label={t('foryou.commentsUnavailable')} onRetry={onRetry} />
     );
   }
-  if (comments.length === 0) {
-    return <Text style={styles.emptyText}>{t('foryou.noComments')}</Text>;
-  }
   return (
     <View style={styles.list}>
+      <View style={styles.commentComposer}>
+        <TextInput
+          accessibilityLabel={t('foryou.commentInput')}
+          editable={canComment}
+          onChangeText={onChangeDraft}
+          placeholder={
+            canComment
+              ? t('foryou.commentPlaceholder')
+              : t('foryou.commentSignIn')
+          }
+          placeholderTextColor={colors.inkMuted}
+          style={styles.commentInput}
+          value={draft}
+        />
+        <Pressable
+          accessibilityRole="button"
+          onPress={onSubmit}
+          style={styles.commentSubmit}
+        >
+          <Text style={styles.commentSubmitText}>
+            {t('foryou.commentPost')}
+          </Text>
+        </Pressable>
+      </View>
+      {comments.length === 0 ? (
+        <Text style={styles.emptyText}>{t('foryou.noComments')}</Text>
+      ) : null}
       {comments.map((comment) => (
         <View key={comment.id} style={styles.comment}>
-          <Text style={styles.commentAuthor}>
-            {comment.author || t('foryou.member')}
-          </Text>
+          <View style={styles.commentTopline}>
+            <Text style={styles.commentAuthor}>
+              {comment.author || t('foryou.member')}
+            </Text>
+            <View style={styles.commentActions}>
+              {comment.is_mine ? (
+                <Pressable
+                  accessibilityLabel={t('foryou.deleteComment')}
+                  accessibilityRole="button"
+                  onPress={() => void onDelete(comment.id)}
+                >
+                  <Text style={styles.commentDelete}>
+                    {t('foryou.deleteComment')}
+                  </Text>
+                </Pressable>
+              ) : (
+                <>
+                  <Pressable
+                    accessibilityLabel={t('moderation.report')}
+                    accessibilityRole="button"
+                    onPress={() => onReport(comment.id)}
+                  >
+                    <Text style={styles.commentDelete}>
+                      {t('moderation.report')}
+                    </Text>
+                  </Pressable>
+                  {comment.author_id ? (
+                    <Pressable
+                      accessibilityLabel={t('moderation.block')}
+                      accessibilityRole="button"
+                      onPress={() => void onBlock(comment.author_id!)}
+                    >
+                      <Text style={styles.commentDelete}>
+                        {t('moderation.block')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </>
+              )}
+            </View>
+          </View>
           <Text style={styles.commentText}>{comment.text}</Text>
         </View>
       ))}
@@ -371,6 +530,38 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     gap: spacing.xs,
     paddingLeft: spacing.sm,
+  },
+  commentComposer: { flexDirection: 'row', gap: spacing.sm },
+  commentInput: {
+    backgroundColor: colors.inkInverse,
+    borderColor: colors.ink,
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    color: colors.ink,
+    flex: 1,
+    fontFamily: fontFamilies.body,
+    minHeight: 42,
+    paddingHorizontal: spacing.sm,
+  },
+  commentSubmit: {
+    alignItems: 'center',
+    backgroundColor: colors.pressRed,
+    borderRadius: radii.compact,
+    justifyContent: 'center',
+    minWidth: 58,
+    paddingHorizontal: spacing.sm,
+  },
+  commentSubmitText: {
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 13,
+  },
+  commentTopline: { flexDirection: 'row', justifyContent: 'space-between' },
+  commentActions: { flexDirection: 'row', gap: spacing.sm },
+  commentDelete: {
+    color: colors.pressRed,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 12,
   },
   commentAuthor: {
     color: colors.ink,

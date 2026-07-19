@@ -1,6 +1,6 @@
 import type { InteractionType } from '@/core/api';
 
-export type OutboxEventType = InteractionType;
+export type OutboxEventType = InteractionType | 'report';
 
 export type RetryDecision =
   | { kind: 'retry'; nextAttemptAt: Date }
@@ -41,5 +41,14 @@ export function decideRetry(
 }
 
 export function isOutboxEventType(value: string): value is OutboxEventType {
-  return ['like', 'bookmark', 'share', 'view', 'progress', 'complete'].includes(value);
+  return [
+    'like',
+    'bookmark',
+    'share',
+    'view',
+    'progress',
+    'complete',
+    'comment',
+    'report',
+  ].includes(value);
 }

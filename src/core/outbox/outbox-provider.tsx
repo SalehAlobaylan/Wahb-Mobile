@@ -16,12 +16,12 @@ import { useAuth } from '@/features/auth/auth-provider';
 
 import {
   enqueueInteraction,
-  type QueuedInteraction,
+  type QueuedOutboxEvent,
 } from './outbox-repository';
 import { flushOutbox } from './outbox-service';
 
 type OutboxController = {
-  enqueue(interaction: QueuedInteraction): Promise<void>;
+  enqueue(interaction: QueuedOutboxEvent): Promise<void>;
   flush(): Promise<void>;
 };
 
@@ -42,7 +42,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
   }, [clients.cms, db, subject]);
 
   const enqueue = useCallback(
-    async (interaction: QueuedInteraction) => {
+    async (interaction: QueuedOutboxEvent) => {
       const installationId = await getInstallationId();
       const identityScope = subject
         ? `user:${subject.id}`

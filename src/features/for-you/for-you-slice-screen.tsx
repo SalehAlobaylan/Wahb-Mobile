@@ -70,6 +70,7 @@ import {
 } from '@/features/playback/playback-model';
 
 import { ForYouDetailSheet } from './for-you-detail-sheet';
+import { ReportSheet } from '@/features/moderation/report-sheet';
 
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
@@ -133,6 +134,10 @@ export function ForYouSliceScreen() {
     null,
   );
   const [isOverflowVisible, setIsOverflowVisible] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{
+    type: 'content';
+    id: string;
+  } | null>(null);
   const session = sessionQuery.data;
   const position =
     selection !== null && selection.sessionId === session?.id
@@ -164,7 +169,9 @@ export function ForYouSliceScreen() {
     !(position >= (session?.items.length ?? 0) - 1 && session?.cursor === null);
   const installationId = identityQuery.data;
   const identityScope = installationId
-    ? (subject ? `user:${subject.id}` : `anonymous:${installationId}`)
+    ? subject
+      ? `user:${subject.id}`
+      : `anonymous:${installationId}`
     : null;
   const liked = item ? (engagement[item.id]?.liked ?? item.is_liked) : false;
   const bookmarked = item
@@ -307,7 +314,13 @@ export function ForYouSliceScreen() {
   ]);
 
   useEffect(() => {
-    if (!session || !item || !identityScope || !isCurrent || playback.phase !== 'playing') {
+    if (
+      !session ||
+      !item ||
+      !identityScope ||
+      !isCurrent ||
+      playback.phase !== 'playing'
+    ) {
       return;
     }
     void recordForYouProgress(
@@ -317,13 +330,27 @@ export function ForYouSliceScreen() {
       identityScope,
       playback.currentTimeSeconds,
       consumption.current?.state.accumulatedPlayedSeconds ?? 0,
-    ).then((recorded) => {
-      if (recorded) {
-        return outbox.flush();
-      }
-      return undefined;
-    }).catch((error: unknown) => captureException('foryou_progress_queue_failed', error));
-  }, [db, identityScope, isCurrent, item, outbox, playback.currentTimeSeconds, playback.phase, position, session]);
+    )
+      .then((recorded) => {
+        if (recorded) {
+          return outbox.flush();
+        }
+        return undefined;
+      })
+      .catch((error: unknown) =>
+        captureException('foryou_progress_queue_failed', error),
+      );
+  }, [
+    db,
+    identityScope,
+    isCurrent,
+    item,
+    outbox,
+    playback.currentTimeSeconds,
+    playback.phase,
+    position,
+    session,
+  ]);
 
   useEffect(() => {
     if (!session || !item || !isCurrent || playback.phase !== 'playing') {
@@ -1090,8 +1117,17 @@ export function ForYouSliceScreen() {
       ) : null}
       <ForYouOverflowSheet
         onClose={() => setIsOverflowVisible(false)}
+        onReport={() =>
+          item && setReportTarget({ type: 'content', id: item.id })
+        }
         onHide={() => void hideCurrentItem()}
         visible={isOverflowVisible}
+      />
+      <ReportSheet
+        onClose={() => setReportTarget(null)}
+        onReported={() => void hideCurrentItem()}
+        target={reportTarget}
+        visible={Boolean(reportTarget)}
       />
     </SafeAreaView>
   );
@@ -1151,10 +1187,12 @@ function createTranscriptExcerpt(text: string): string {
 function ForYouOverflowSheet({
   onClose,
   onHide,
+  onReport,
   visible,
 }: {
   onClose: () => void;
   onHide: () => void;
+  onReport: () => void;
   visible: boolean;
 }) {
   const { t } = useTranslation();
@@ -1199,6 +1237,24 @@ function ForYouOverflowSheet({
               <Text style={styles.hideActionTitle}>{t('foryou.hideItem')}</Text>
               <Text style={styles.hideActionDescription}>
                 {t('foryou.hideItemDescription')}
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onReport}
+            style={({ pressed }) => [
+              styles.hideAction,
+              pressed && styles.overflowPressed,
+            ]}
+          >
+            <Info color={colors.pressRed} size={20} />
+            <View style={styles.hideActionCopy}>
+              <Text style={styles.hideActionTitle}>
+                {t('moderation.report')}
+              </Text>
+              <Text style={styles.hideActionDescription}>
+                {t('moderation.reportCopy')}
               </Text>
             </View>
           </Pressable>

@@ -3,6 +3,8 @@ import {
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
   interactionResponseSchema,
+  moderationReasonSchema,
+  moderationReportResponseSchema,
   interactionTypeSchema,
   historyResponseSchema,
   preferencesResponseSchema,
@@ -22,6 +24,7 @@ import {
   type PreferencesResponse,
   type SavedContentResponse,
   type TopicPickerResponse,
+  type ModerationReason,
 } from './schemas';
 import type { Transport } from './transport';
 import { HttpError } from './errors';
@@ -51,12 +54,16 @@ export type CmsApi = {
   ): Promise<Transcript>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
   deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
+  deleteComment(commentId: string, sessionId: string): Promise<void>;
   getSavedContent(request: SavedContentRequest): Promise<SavedContentResponse>;
   getHistory(request: HistoryRequest): Promise<HistoryResponse>;
   clearHistory(sessionId: string): Promise<void>;
   getTopicPicker(signal?: AbortSignal): Promise<TopicPickerResponse>;
   getPreferences(signal?: AbortSignal): Promise<PreferencesResponse>;
   updateDeclaredTopics(topicIds: string[]): Promise<PreferencesResponse>;
+  reportModeration(request: ModerationReportRequest): Promise<void>;
+  blockAuthor(authorId: string): Promise<void>;
+  unblockAuthor(authorId: string): Promise<void>;
 };
 
 export type NewsPageRequest = {
@@ -114,6 +121,14 @@ export type HistoryRequest = {
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
+};
+
+export type ModerationReportRequest = {
+  targetType: 'content' | 'comment';
+  targetId: string;
+  reason: ModerationReason;
+  detail?: string;
+  idempotencyKey: string;
 };
 
 export function createCmsApi(transport: Transport): CmsApi {
@@ -212,7 +227,11 @@ export function createCmsApi(transport: Transport): CmsApi {
     },
     getTranscript(transcriptId, signal) {
       return transport.request(
-        { path: `/api/v1/transcripts/${transcriptId}`, signal, authenticated: true },
+        {
+          path: `/api/v1/transcripts/${transcriptId}`,
+          signal,
+          authenticated: true,
+        },
         transcriptResponseSchema,
       );
     },
@@ -267,7 +286,31 @@ export function createCmsApi(transport: Transport): CmsApi {
         throw error;
       }
     },
-    getSavedContent({ cursor, limit = 20, sort = 'saved_desc', feed = 'all', signal }) {
+    async deleteComment(commentId, sessionId) {
+      try {
+        await transport.request(
+          {
+            path: `/api/v1/interactions/${commentId}`,
+            method: 'DELETE',
+            query: { session_id: sessionId },
+            authenticated: true,
+          },
+          interactionResponseSchema,
+        );
+      } catch (error) {
+        if (error instanceof HttpError && error.context.status === 404) {
+          return;
+        }
+        throw error;
+      }
+    },
+    getSavedContent({
+      cursor,
+      limit = 20,
+      sort = 'saved_desc',
+      feed = 'all',
+      signal,
+    }) {
       return transport.request(
         {
           path: '/api/v1/interactions/bookmarks',
@@ -321,6 +364,51 @@ export function createCmsApi(transport: Transport): CmsApi {
           authenticated: true,
         },
         preferencesResponseSchema,
+      );
+    },
+    async reportModeration({
+      targetType,
+      targetId,
+      reason,
+      detail,
+      idempotencyKey,
+    }) {
+      moderationReasonSchema.parse(reason);
+      await transport.request(
+        {
+          path: '/api/v1/moderation/reports',
+          method: 'POST',
+          authenticated: true,
+          idempotencyKey,
+          body: {
+            target_type: targetType,
+            target_id: targetId,
+            reason,
+            ...(detail ? { detail } : {}),
+          },
+        },
+        moderationReportResponseSchema,
+      );
+    },
+    async blockAuthor(authorId) {
+      await transport.request(
+        {
+          path: '/api/v1/moderation/blocks',
+          method: 'POST',
+          authenticated: true,
+          body: { author_id: authorId },
+        },
+        interactionResponseSchema,
+      );
+    },
+    async unblockAuthor(authorId) {
+      await transport.request(
+        {
+          path: `/api/v1/moderation/blocks/${authorId}`,
+          method: 'DELETE',
+          authenticated: true,
+        },
+        interactionResponseSchema,
       );
     },
   };

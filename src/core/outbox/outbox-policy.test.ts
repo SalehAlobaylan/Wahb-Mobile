@@ -1,6 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { decideRetry, isOutboxEventType, isPermanentRejection } from './outbox-policy';
+import {
+  decideRetry,
+  isOutboxEventType,
+  isPermanentRejection,
+} from './outbox-policy';
 
 describe('outbox retry policy', () => {
   const now = new Date('2026-07-19T12:00:00.000Z');
@@ -30,5 +34,13 @@ describe('outbox retry policy', () => {
 
   it('allows durable progress checkpoints through the same ordered outbox', () => {
     expect(isOutboxEventType('progress')).toBe(true);
+  });
+
+  it('keeps authenticated comment delivery in the durable event vocabulary', () => {
+    expect(isOutboxEventType('comment')).toBe(true);
+  });
+
+  it('queues moderation reports for replay-safe delivery', () => {
+    expect(isOutboxEventType('report')).toBe(true);
   });
 });

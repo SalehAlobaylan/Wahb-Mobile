@@ -229,6 +229,7 @@ export const interactionTypeSchema = z.enum([
   'view',
   'progress',
   'complete',
+  'comment',
 ]);
 
 export const interactionResponseSchema = z
@@ -237,6 +238,19 @@ export const interactionResponseSchema = z
     message: z.string(),
     data: z.unknown().optional(),
   })
+  .passthrough();
+
+export const moderationReasonSchema = z.enum([
+  'harmful_inappropriate',
+  'misinformation',
+  'copyright',
+  'broken_media',
+  'incorrect_language_translation',
+  'other',
+]);
+
+export const moderationReportResponseSchema = z
+  .object({ id: z.uuid(), status: z.literal('received') })
   .passthrough();
 
 const savedContentItemSchema = z
@@ -284,7 +298,12 @@ export const historyResponseSchema = z
           duration_sec: z.number().int().positive().nullable().optional(),
           author: z.string().nullable().optional(),
           source_name: z.string().nullable().optional(),
-          progress_seconds: z.number().int().nonnegative().nullable().optional(),
+          progress_seconds: z
+            .number()
+            .int()
+            .nonnegative()
+            .nullable()
+            .optional(),
         })
         .passthrough(),
     ),
@@ -341,6 +360,7 @@ const commentItemSchema = z
     id: z.uuid(),
     text: z.string().trim().min(1),
     author: z.string().optional(),
+    author_id: z.uuid().nullable().optional(),
     is_mine: z.boolean(),
     created_at: z.string().datetime(),
   })
@@ -394,3 +414,4 @@ export type HistoryItem = HistoryResponse['items'][number];
 export type TopicPickerResponse = z.infer<typeof topicPickerResponseSchema>;
 export type PreferencesResponse = z.infer<typeof preferencesResponseSchema>;
 export type IamProfile = z.infer<typeof iamProfileSchema>;
+export type ModerationReason = z.infer<typeof moderationReasonSchema>;
