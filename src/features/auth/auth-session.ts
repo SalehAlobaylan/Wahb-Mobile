@@ -25,6 +25,8 @@ export type AuthSessionSnapshot = {
   subject: AuthSubject | null;
 };
 
+type AuthSessionListener = (snapshot: AuthSessionSnapshot) => void;
+
 function decodeBase64Url(value: string): string | null {
   try {
     const normalized = value.replace(/-/g, '+').replace(/_/g, '/');
@@ -67,6 +69,7 @@ export class AuthSessionManager {
   private accessToken: string | null = null;
   private subject: AuthSubject | null = null;
   private refreshInFlight: Promise<string | null> | null = null;
+  private readonly listeners = new Set<AuthSessionListener>();
   private readonly iam: IamApi;
   private readonly credentialStore: RefreshCredentialStore;
 
@@ -84,6 +87,19 @@ export class AuthSessionManager {
 
   getAccessToken = (): string | null => this.accessToken;
 
+  /** Lets UI state react when a background refresh clears a revoked session. */
+  subscribe(listener: AuthSessionListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  private notify(): void {
+    const snapshot = this.snapshot();
+    for (const listener of this.listeners) {
+      listener(snapshot);
+    }
+  }
+
   async accept(tokens: AuthTokenPair): Promise<AuthSessionSnapshot> {
     const subject = subjectFromAccessToken(tokens.access_token);
     if (!subject) {
@@ -97,6 +113,7 @@ export class AuthSessionManager {
     );
     this.accessToken = tokens.access_token;
     this.subject = subject;
+    this.notify();
     return this.snapshot();
   }
 
@@ -160,5 +177,6 @@ export class AuthSessionManager {
     this.accessToken = null;
     this.subject = null;
     await this.credentialStore.deleteItemAsync(refreshTokenKey);
+    this.notify();
   }
 }

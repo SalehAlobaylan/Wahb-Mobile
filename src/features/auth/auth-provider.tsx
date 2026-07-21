@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -49,6 +50,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionManager.snapshot(),
   );
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const previousSubjectRef = useRef<string | null>(
+    snapshot.subject?.id ?? null,
+  );
 
   const sync = useCallback(() => setSnapshot(sessionManager.snapshot()), []);
   useEffect(() => {
@@ -57,6 +61,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsBootstrapping(false);
     });
   }, [sync]);
+
+  useEffect(
+    () =>
+      sessionManager.subscribe((nextSnapshot) => {
+        const previousUserId = previousSubjectRef.current;
+        previousSubjectRef.current = nextSnapshot.subject?.id ?? null;
+        if (previousUserId && previousUserId !== nextSnapshot.subject?.id) {
+          queryClient.removeQueries({
+            predicate: (query) =>
+              isUserPartition(query.queryKey, previousUserId),
+          });
+        }
+        setSnapshot(nextSnapshot);
+      }),
+    [],
+  );
 
   const accept = useCallback(
     async (tokens: AuthTokenPair) => {
