@@ -23,6 +23,13 @@ const config: ExpoConfig = {
   android: {
     package: 'com.salehspace.wahb',
     versionCode: 1,
+    // Wahb neither reads shared storage nor draws over other apps. Expo's
+    // transitive manifests can otherwise add these legacy permissions.
+    blockedPermissions: [
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.SYSTEM_ALERT_WINDOW',
+    ],
     adaptiveIcon: {
       backgroundColor: '#f8f5f2',
       foregroundImage: './assets/brand/wahb-logo-circle-red.png',
@@ -44,6 +51,7 @@ const config: ExpoConfig = {
     ],
   },
   plugins: [
+    './plugins/with-android-min-sdk',
     'expo-router',
     'expo-asset',
     [

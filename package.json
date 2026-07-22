@@ -69,6 +69,7 @@
     "doctor": "npx expo-doctor",
     "prebuild:clean": "expo prebuild --clean",
     "prebuild:verify": "expo prebuild --clean --no-install",
+    "android:verify": "expo prebuild --clean --no-install && node scripts/verify-android-manifest.mjs",
     "validate": "npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "engines": {

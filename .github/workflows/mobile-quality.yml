@@ -28,3 +28,16 @@ jobs:
       - run: npm ci
       - run: npx expo prebuild --clean --no-install
       - run: npx expo run:ios --configuration Debug --no-bundler
+
+  android-cng-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run android:verify
+      - run: ./gradlew app:assembleDebug --no-daemon
+        working-directory: android
