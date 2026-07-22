@@ -12,6 +12,9 @@ export async function clearLocalWahbData(db: SQLiteDatabase): Promise<void> {
       DELETE FROM article_snapshots;
       DELETE FROM reader_positions;
       DELETE FROM opened_news_stories;
+      DELETE FROM tombstoned_content_items;
+      DELETE FROM article_snapshots_v2;
+      DELETE FROM reader_positions_v2;
       DELETE FROM app_metadata;
     `);
   });

@@ -17,6 +17,7 @@ import { hapticLightImpact, hapticSelection } from '@/core/haptics/feedback';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import { playbackRates } from '@/features/playback/playback-model';
 import { usePlaybackController } from '@/features/playback/playback-provider';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 
 const ringSize = 52;
 const ringRadius = 22;
@@ -26,6 +27,7 @@ const ringLength = 2 * Math.PI * ringRadius;
 export function NewsNowPlayingTile() {
   const { t } = useTranslation();
   const playback = usePlaybackController();
+  const reducedMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
   const active = playback.item;
   const progress =
@@ -127,7 +129,7 @@ export function NewsNowPlayingTile() {
         ) : null}
       </Pressable>
       <Modal
-        animationType="slide"
+        animationType={reducedMotion ? 'none' : 'slide'}
         onRequestClose={() => setExpanded(false)}
         transparent
         visible={expanded && Boolean(active)}

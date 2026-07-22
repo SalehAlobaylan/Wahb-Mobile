@@ -18,12 +18,14 @@ export type CachedArticle = {
 
 export async function loadArticleSnapshot(
   db: SQLiteDatabase,
+  identityScope: string,
   contentId: string,
 ): Promise<CachedArticle | null> {
   const row = await db.getFirstAsync<ArticleSnapshotRow>(
     `SELECT snapshot_json, cached_at
-       FROM article_snapshots
-      WHERE content_id = ?`,
+       FROM article_snapshots_v2
+      WHERE identity_scope = ? AND content_id = ?`,
+    identityScope,
     contentId,
   );
   if (!row) {
@@ -38,7 +40,8 @@ export async function loadArticleSnapshot(
   } catch {
     // Corrupt local content must not masquerade as an offline article.
     await db.runAsync(
-      'DELETE FROM article_snapshots WHERE content_id = ?',
+      'DELETE FROM article_snapshots_v2 WHERE identity_scope = ? AND content_id = ?',
+      identityScope,
       contentId,
     );
     return null;
@@ -47,32 +50,37 @@ export async function loadArticleSnapshot(
 
 export async function saveArticleSnapshot(
   db: SQLiteDatabase,
+  identityScope: string,
   article: ArticleContent,
   now = new Date(),
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO article_snapshots (content_id, snapshot_json, cached_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(content_id) DO UPDATE SET
+    `INSERT INTO article_snapshots_v2 (identity_scope, content_id, snapshot_json, cached_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(identity_scope, content_id) DO UPDATE SET
        snapshot_json = excluded.snapshot_json,
        cached_at = excluded.cached_at`,
+    identityScope,
     article.id,
-    JSON.stringify(article),
+    JSON.stringify({ ...article, is_bookmarked: undefined }),
     now.toISOString(),
   );
 }
 
 export async function deleteArticleSnapshot(
   db: SQLiteDatabase,
+  identityScope: string,
   contentId: string,
 ): Promise<void> {
   await db.withExclusiveTransactionAsync(async (transaction) => {
     await transaction.runAsync(
-      'DELETE FROM article_snapshots WHERE content_id = ?',
+      'DELETE FROM article_snapshots_v2 WHERE identity_scope = ? AND content_id = ?',
+      identityScope,
       contentId,
     );
     await transaction.runAsync(
-      'DELETE FROM reader_positions WHERE content_id = ?',
+      'DELETE FROM reader_positions_v2 WHERE identity_scope = ? AND content_id = ?',
+      identityScope,
       contentId,
     );
   });
@@ -80,10 +88,13 @@ export async function deleteArticleSnapshot(
 
 export async function loadReaderPosition(
   db: SQLiteDatabase,
+  identityScope: string,
   contentId: string,
 ): Promise<number> {
   const row = await db.getFirstAsync<ReaderPositionRow>(
-    `SELECT offset_y FROM reader_positions WHERE content_id = ?`,
+    `SELECT offset_y FROM reader_positions_v2
+      WHERE identity_scope = ? AND content_id = ?`,
+    identityScope,
     contentId,
   );
   return Math.max(0, row?.offset_y ?? 0);
@@ -91,16 +102,18 @@ export async function loadReaderPosition(
 
 export async function saveReaderPosition(
   db: SQLiteDatabase,
+  identityScope: string,
   contentId: string,
   offsetY: number,
   now = new Date(),
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO reader_positions (content_id, offset_y, updated_at)
-     VALUES (?, ?, ?)
-     ON CONFLICT(content_id) DO UPDATE SET
+    `INSERT INTO reader_positions_v2 (identity_scope, content_id, offset_y, updated_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(identity_scope, content_id) DO UPDATE SET
        offset_y = excluded.offset_y,
        updated_at = excluded.updated_at`,
+    identityScope,
     contentId,
     Math.max(0, offsetY),
     now.toISOString(),

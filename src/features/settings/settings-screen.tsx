@@ -21,6 +21,7 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { setHapticsEnabled } from '@/core/haptics/feedback';
+import { queryClient } from '@/core/query/query-client';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import {
   playbackRates,
@@ -65,7 +66,14 @@ export function SettingsScreen() {
   const updateLanguage = (next: Partial<typeof language>) => {
     const preferences = { ...language, ...next };
     setLanguage(preferences);
-    void writeLanguagePreferences(preferences);
+    void writeLanguagePreferences(preferences).then(() => {
+      // This preference partitions frozen For You sessions. Invalidating the
+      // preference lets the next mounted feed resolve its distinct session;
+      // the prior snapshot remains untouched for its original language mode.
+      return queryClient.invalidateQueries({
+        queryKey: ['content-language-preference'],
+      });
+    });
   };
   const updateExperience = (next: Partial<ExperiencePreferences>) => {
     const preferences = { ...experience, ...next };

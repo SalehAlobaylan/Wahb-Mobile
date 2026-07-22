@@ -6,6 +6,7 @@ import {
   commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
+  forYouSessionFreshnessResponseSchema,
   newsFeedResponseSchema,
   transcriptResponseSchema,
 } from './schemas';
@@ -42,6 +43,26 @@ describe('For You contract schema', () => {
     });
   });
 
+  it('accepts a fallback only when CMS provides its explicit type and video capability', () => {
+    const parsed = forYouFeedResponseSchema.parse({
+      items: [
+        {
+          ...validItem,
+          fallback_playback_url: 'https://media.example.test/episode.mp4',
+          fallback_playback_type: 'mp4',
+          fallback_has_video: true,
+        },
+      ],
+      cursor: null,
+    });
+
+    expect(parsed.items[0]?.playback).toMatchObject({
+      fallbackUrl: 'https://media.example.test/episode.mp4',
+      fallbackType: 'mp4',
+      fallbackHasVideo: true,
+    });
+  });
+
   it('quarantines malformed playback metadata without rejecting valid feed units', () => {
     const parsed = forYouFeedResponseSchema.parse({
       items: [{ ...validItem, playback_type: 'stream' }, validItem],
@@ -60,6 +81,12 @@ describe('For You contract schema', () => {
     });
 
     expect(parsed.serverSessionId).toBe('b4a7e91c-9227-4c51-9fa8-9955e1e4c139');
+  });
+
+  it('normalizes the server-owned frozen-session freshness signal', () => {
+    expect(
+      forYouSessionFreshnessResponseSchema.parse({ has_new_content: true }),
+    ).toEqual({ hasNewContent: true });
   });
 
   it('tolerates additive CMS fields', () => {

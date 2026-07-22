@@ -4,6 +4,7 @@ import {
   decideRetry,
   isOutboxEventType,
   isPermanentRejection,
+  shouldBlockForAuthentication,
 } from './outbox-policy';
 
 describe('outbox retry policy', () => {
@@ -42,5 +43,13 @@ describe('outbox retry policy', () => {
 
   it('queues moderation reports for replay-safe delivery', () => {
     expect(isOutboxEventType('report')).toBe(true);
+  });
+
+  it('parks only account-scoped 401 work for restored credentials', () => {
+    expect(shouldBlockForAuthentication(401, 'user:account-1')).toBe(true);
+    expect(shouldBlockForAuthentication(401, 'anonymous:install-1')).toBe(
+      false,
+    );
+    expect(shouldBlockForAuthentication(403, 'user:account-1')).toBe(false);
   });
 });

@@ -16,6 +16,7 @@ import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import { playbackRates, type PlaybackItem } from './playback-model';
 import { usePlaybackController } from './playback-provider';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 
 type DismissedPlayback = {
   item: PlaybackItem;
@@ -38,6 +39,7 @@ export function NonFeedNowPlaying() {
   const { t } = useTranslation();
   const pathname = usePathname();
   const playback = usePlaybackController();
+  const reducedMotion = useReducedMotion();
   const [expanded, setExpanded] = useState(false);
   const [dismissed, setDismissed] = useState<DismissedPlayback | null>(null);
   const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,7 +180,7 @@ export function NonFeedNowPlaying() {
         </View>
       ) : null}
       <Modal
-        animationType="slide"
+        animationType={reducedMotion ? 'none' : 'slide'}
         onRequestClose={() => setExpanded(false)}
         transparent
         visible={expanded && Boolean(active)}

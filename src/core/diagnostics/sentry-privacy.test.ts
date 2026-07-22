@@ -22,7 +22,11 @@ describe('redactSentryEvent', () => {
       breadcrumbs: [{ message: 'private navigation' }],
       contexts: {
         device: { model: 'private device context' },
-        wahb_diagnostic: { status: 503, endpoint: 'feed_session' },
+        wahb_diagnostic: {
+          status: 503,
+          endpoint: 'feed_session',
+          url: 'https://private.example',
+        },
       },
     });
 
@@ -37,7 +41,7 @@ describe('redactSentryEvent', () => {
         ],
       },
       contexts: {
-        wahb_diagnostic: { status: 503, endpoint: 'feed_session' },
+        wahb_diagnostic: { status: 503 },
       },
     });
     expect(redacted.request).toBeUndefined();

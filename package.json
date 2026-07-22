@@ -7,11 +7,13 @@
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/geist-mono": "^0.4.3",
     "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@react-native-community/netinfo": "12.0.1",
     "@sentry/react-native": "~7.11.0",
     "@tanstack/react-query": "^5.101.2",
     "expo": "~57.0.7",
     "expo-asset": "~57.0.6",
     "expo-audio": "~57.0.2",
+    "expo-battery": "~57.0.1",
     "expo-constants": "~57.0.6",
     "expo-crypto": "~57.0.1",
     "expo-dev-client": "~57.0.7",
@@ -66,11 +68,17 @@
     "format:check": "prettier --check .",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
+    "test:maestro:list": "node scripts/list-maestro-flows.mjs",
+    "test:maestro:smoke": "maestro test .maestro",
+    "test:integration:local": "node scripts/test-local-integration.mjs",
+    "hygiene:verify": "node scripts/verify-repository-hygiene.mjs",
     "doctor": "npx expo-doctor",
     "prebuild:clean": "expo prebuild --clean",
     "prebuild:verify": "expo prebuild --clean --no-install",
     "android:verify": "expo prebuild --clean --no-install && node scripts/verify-android-manifest.mjs",
-    "validate": "npm run typecheck && npm run lint && npm run format:check && npm test"
+    "release:verify": "expo prebuild --clean --no-install && node scripts/verify-release-config.mjs",
+    "release:links:verify": "node scripts/verify-public-release-links.mjs",
+    "validate": "npm run typecheck && npm run lint && npm run format:check && npm run hygiene:verify && npm test"
   },
   "engines": {
     "node": ">=22.13 <26"

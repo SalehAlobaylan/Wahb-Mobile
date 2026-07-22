@@ -19,6 +19,8 @@ type EventOutboxRow = {
   attempt_count: number;
 };
 
+const outboxLeaseMs = 5 * 60 * 1_000;
+
 type OutboxWriteExecutor = Pick<SQLiteDatabase, 'getFirstAsync' | 'runAsync'>;
 
 export type QueuedInteraction = {
@@ -51,6 +53,7 @@ export type ClaimedOutboxEvent = {
 export type OutboxHealth = {
   pending: number;
   failed: number;
+  authBlocked: number;
 };
 
 export async function readOutboxHealth(
@@ -60,12 +63,17 @@ export async function readOutboxHealth(
   const row = await db.getFirstAsync<OutboxHealth>(
     `SELECT
        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+       SUM(CASE WHEN status = 'auth_blocked' THEN 1 ELSE 0 END) AS authBlocked
      FROM event_outbox
      WHERE identity_scope = ?`,
     identityScope,
   );
-  return { pending: row?.pending ?? 0, failed: row?.failed ?? 0 };
+  return {
+    pending: row?.pending ?? 0,
+    failed: row?.failed ?? 0,
+    authBlocked: row?.authBlocked ?? 0,
+  };
 }
 
 function asClaimedEvent(row: EventOutboxRow): ClaimedOutboxEvent | null {
@@ -141,6 +149,27 @@ export async function enqueueInteractionWithIds(
   now = new Date(),
 ): Promise<void> {
   const createdAt = now.toISOString();
+  if (interaction.type === 'progress') {
+    // Keep only the latest pending checkpoint after the most recent semantic
+    // event. This bounds playback writes without moving progress across a
+    // like/comment/report boundary in the ordered outbox.
+    await db.runAsync(
+      `DELETE FROM event_outbox
+        WHERE identity_scope = ?
+          AND event_type = 'progress'
+          AND status = 'pending'
+          AND json_extract(payload_json, '$.contentId') = ?
+          AND sequence > COALESCE(
+            (SELECT MAX(sequence)
+               FROM event_outbox
+              WHERE identity_scope = ? AND event_type <> 'progress'),
+            0
+          )`,
+      identityScope,
+      interaction.contentId,
+      identityScope,
+    );
+  }
   const sequence = await db.getFirstAsync<{ next_sequence: number }>(
     `SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence
        FROM event_outbox
@@ -170,6 +199,17 @@ export async function claimNextOutboxEvent(
   const timestamp = now.toISOString();
   let claimedEvent: ClaimedOutboxEvent | null = null;
   await db.withExclusiveTransactionAsync(async (transaction) => {
+    await transaction.runAsync(
+      `UPDATE event_outbox
+          SET status = 'pending', claimed_at = NULL, updated_at = ?
+        WHERE identity_scope = ?
+          AND status = 'in_flight'
+          AND claimed_at IS NOT NULL
+          AND claimed_at <= ?`,
+      timestamp,
+      identityScope,
+      new Date(now.getTime() - outboxLeaseMs).toISOString(),
+    );
     const row = await transaction.getFirstAsync<EventOutboxRow>(
       `SELECT id, identity_scope, event_type, payload_json, idempotency_key, sequence, attempt_count
          FROM event_outbox
@@ -201,8 +241,10 @@ export async function claimNextOutboxEvent(
     }
     await transaction.runAsync(
       `UPDATE event_outbox
-          SET status = 'in_flight', attempt_count = attempt_count + 1, updated_at = ?
+          SET status = 'in_flight', attempt_count = attempt_count + 1,
+              claimed_at = ?, updated_at = ?
         WHERE id = ?`,
+      timestamp,
       timestamp,
       row.id,
     );
@@ -218,23 +260,53 @@ export async function acknowledgeOutboxEvent(
   await db.runAsync(`DELETE FROM event_outbox WHERE id = ?`, eventId);
 }
 
+/** Account-scoped work remains durable until that account has credentials again. */
+export async function blockOutboxEventForAuth(
+  db: SQLiteDatabase,
+  eventId: string,
+  now = new Date(),
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE event_outbox
+        SET status = 'auth_blocked', claimed_at = NULL, next_attempt_at = NULL, updated_at = ?
+      WHERE id = ?`,
+    now.toISOString(),
+    eventId,
+  );
+}
+
+/** Re-enable only the restored account's parked work. */
+export async function resumeAuthBlockedOutbox(
+  db: SQLiteDatabase,
+  identityScope: string,
+  now = new Date(),
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE event_outbox
+        SET status = 'pending', updated_at = ?
+      WHERE identity_scope = ? AND status = 'auth_blocked'`,
+    now.toISOString(),
+    identityScope,
+  );
+}
+
 export async function retryOrRejectOutboxEvent(
   db: SQLiteDatabase,
   event: ClaimedOutboxEvent,
   status: number | undefined,
   now = new Date(),
-): Promise<void> {
+): Promise<ReturnType<typeof decideRetry>> {
   const decision = decideRetry(event.attemptCount, now, status);
   if (decision.kind === 'retry') {
     await db.runAsync(
       `UPDATE event_outbox
-          SET status = 'failed', next_attempt_at = ?, updated_at = ?
+          SET status = 'failed', claimed_at = NULL, next_attempt_at = ?, updated_at = ?
         WHERE id = ?`,
       decision.nextAttemptAt.toISOString(),
       now.toISOString(),
       event.id,
     );
-    return;
+    return decision;
   }
 
   await db.withExclusiveTransactionAsync(async (transaction) => {
@@ -251,4 +323,5 @@ export async function retryOrRejectOutboxEvent(
       now.toISOString(),
     );
   });
+  return decision;
 }

@@ -66,7 +66,12 @@ export function toDiagnosticErrorContext(
     };
   }
 
-  return { error_name: error instanceof Error ? error.name : 'UnknownError' };
+  // Never trust an arbitrary Error.name: third-party/native errors can include
+  // request or account details. The diagnostic boundary only needs to know
+  // that it was not one of our typed transport errors.
+  return {
+    error_name: error instanceof Error ? 'ApplicationError' : 'UnknownError',
+  };
 }
 
 /** Removes query material and dynamic identifiers before diagnostics see a route. */

@@ -1,5 +1,4 @@
 import { router } from 'expo-router';
-import { useSQLiteContext } from 'expo-sqlite';
 import { AlertCircle, ArrowLeft, Trash2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
@@ -16,7 +15,6 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
-import { clearLocalWahbData } from '@/core/database/reset-local-data';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import { useAuth } from './auth-provider';
@@ -24,7 +22,6 @@ import { useAuth } from './auth-provider';
 export function DeleteAccountScreen() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const db = useSQLiteContext();
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +38,6 @@ export function DeleteAccountScreen() {
       // IAM revokes server credentials before accepting this request. The local
       // account partition is only cleared after that boundary succeeds.
       await auth.requestAccountDeletion(password);
-      await clearLocalWahbData(db);
       await auth.resetLocalData();
       router.replace('/');
     } catch {

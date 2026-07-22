@@ -48,20 +48,32 @@ build, not Expo Go.
 
 ## Commands
 
-| Command                  | Purpose                                          |
-| ------------------------ | ------------------------------------------------ |
-| `npm start`              | Start Metro for a development build              |
-| `npm run ios`            | Generate/run the iOS development build           |
-| `npm run android`        | Generate/run the Android development build       |
-| `npm run validate`       | Typecheck, lint, formatting check, and tests     |
-| `npm run doctor`         | Validate the Expo dependency/configuration graph |
-| `npm run prebuild:clean` | Regenerate native projects from app config       |
+| Command                          | Purpose                                             |
+| -------------------------------- | --------------------------------------------------- |
+| `npm start`                      | Start Metro for a development build                 |
+| `npm run ios`                    | Generate/run the iOS development build              |
+| `npm run android`                | Generate/run the Android development build          |
+| `npm run validate`               | Typecheck, lint, formatting check, and tests        |
+| `npm run test:maestro:list`      | List committed Maestro device flows                 |
+| `npm run test:maestro:smoke`     | Run Maestro flows on a configured simulator         |
+| `npm run test:integration:local` | Confirm local CMS/IAM contracts after `../start.sh` |
+| `npm run doctor`                 | Validate the Expo dependency/configuration graph    |
+| `npm run prebuild:clean`         | Regenerate native projects from app config          |
 
 ## Architecture
 
 Read [`docs/architecture.md`](docs/architecture.md) before adding features.
 Generated `ios/` and `android/` projects are intentionally ignored; Expo
 config plugins are the source of native configuration.
+
+## Verification boundaries
+
+Jest is hermetic: production, staging, and developer service requests fail
+unless a test supplies a fixture transport. Maestro is device-only and is not
+part of the hermetic JavaScript gate; install the [Maestro CLI](https://maestro.mobile.dev/getting-started/installing-maestro)
+and provide its documented simulator/device fixture before invoking its smoke
+command. The local integration command only allows loopback CMS and IAM URLs
+and requires the parent stack to be started with `./start.sh`.
 
 ## Security
 

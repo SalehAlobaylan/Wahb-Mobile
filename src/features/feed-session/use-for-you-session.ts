@@ -8,6 +8,7 @@ import {
 } from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
 import { useAuth } from '@/features/auth/auth-provider';
+import { readLanguagePreferences } from '@/features/settings/language-preferences';
 
 import {
   loadFreshForYouSession,
@@ -43,15 +44,28 @@ export function useForYouSession() {
       ? `user:${subject.id}`
       : `anonymous:${installationId}`
     : undefined;
+  const languageQuery = useQuery({
+    queryKey: ['content-language-preference'],
+    queryFn: readLanguagePreferences,
+    staleTime: Infinity,
+  });
+  const contentLanguage = languageQuery.data?.contentLanguage ?? 'both';
+  // A delivery preference changes server inventory. It therefore partitions
+  // only the local frozen-session ledger, never the account/outbox identity.
+  const sessionScope = identityScope
+    ? `${identityScope}:content-language:${contentLanguage}`
+    : undefined;
   const sessionQuery = useQuery<FrozenForYouSession>({
-    queryKey: ['foryou-session', identityScope],
-    enabled: Boolean(installationId && identityScope),
+    queryKey: ['foryou-session', sessionScope],
+    enabled: Boolean(
+      installationId && sessionScope && !languageQuery.isPending,
+    ),
     queryFn: async ({ signal }) => {
-      if (!installationId || !identityScope) {
+      if (!installationId || !sessionScope) {
         throw new Error('Installation identity is unavailable.');
       }
 
-      const restored = await loadFreshForYouSession(db, identityScope);
+      const restored = await loadFreshForYouSession(db, sessionScope);
       if (restored) {
         captureDiagnostic('foryou_session_health', {
           event_type: 'fresh_restore',
@@ -63,17 +77,18 @@ export function useForYouSession() {
         const page = await clients.cms.createForYouSession({
           installationId,
           limit: 10,
+          contentLanguage,
           signal,
         });
         return materializeForYouSession(
           db,
-          identityScope,
+          sessionScope,
           page,
           page.serverSessionId,
           page.expiresAt,
         );
       } catch (error) {
-        const recovery = await loadRecoverableForYouSession(db, identityScope);
+        const recovery = await loadRecoverableForYouSession(db, sessionScope);
         if (recovery) {
           const createdAtMs = new Date(recovery.createdAt).getTime();
           captureException('foryou_session_offline_restore', error, {
@@ -89,7 +104,7 @@ export function useForYouSession() {
   });
 
   const fetchNextPage = useCallback(async (): Promise<boolean> => {
-    if (!installationId) {
+    if (!installationId || !sessionScope) {
       return false;
     }
     const current = sessionQuery.data;
@@ -119,11 +134,11 @@ export function useForYouSession() {
       const updated = await appendForYouSessionPage(
         db,
         current.id,
-        identityScope!,
+        sessionScope,
         page,
       );
       if (updated) {
-        queryClient.setQueryData(['foryou-session', identityScope], updated);
+        queryClient.setQueryData(['foryou-session', sessionScope], updated);
         return true;
       }
       return false;
@@ -136,14 +151,14 @@ export function useForYouSession() {
   }, [
     clients.cms,
     db,
-    identityScope,
+    sessionScope,
     installationId,
     queryClient,
     sessionQuery.data,
   ]);
 
   const refreshSession = useCallback(async () => {
-    if (!installationId) {
+    if (!installationId || !sessionScope) {
       return;
     }
     // Materialization expires the prior session only after this request has
@@ -151,32 +166,56 @@ export function useForYouSession() {
     const page = await clients.cms.createForYouSession({
       installationId,
       limit: 10,
+      contentLanguage,
     });
     const updated = await materializeForYouSession(
       db,
-      identityScope!,
+      sessionScope,
       page,
       page.serverSessionId,
       page.expiresAt,
     );
-    queryClient.setQueryData(['foryou-session', identityScope], updated);
-  }, [clients.cms, db, identityScope, installationId, queryClient]);
+    queryClient.setQueryData(['foryou-session', sessionScope], updated);
+  }, [
+    clients.cms,
+    contentLanguage,
+    db,
+    installationId,
+    queryClient,
+    sessionScope,
+  ]);
+
+  const checkForFreshness = useCallback(async (): Promise<boolean> => {
+    const current = sessionQuery.data;
+    if (
+      !installationId ||
+      current?.isOfflineSnapshot ||
+      !current?.serverSessionId
+    ) {
+      return false;
+    }
+    const response = await clients.cms.getForYouSessionFreshness({
+      installationId,
+      sessionId: current.serverSessionId,
+    });
+    return response.hasNewContent;
+  }, [clients.cms, installationId, sessionQuery.data]);
 
   const hideItem = useCallback(
     async (contentId: string): Promise<FrozenForYouSession | null> => {
-      if (!installationId || !sessionQuery.data) {
+      if (!installationId || !sessionScope || !sessionQuery.data) {
         return null;
       }
       const updated = await hideForYouItem(
         db,
         sessionQuery.data.id,
-        identityScope!,
+        sessionScope,
         contentId,
       );
-      queryClient.setQueryData(['foryou-session', identityScope], updated);
+      queryClient.setQueryData(['foryou-session', sessionScope], updated);
       return updated;
     },
-    [db, identityScope, installationId, queryClient, sessionQuery.data],
+    [db, installationId, queryClient, sessionQuery.data, sessionScope],
   );
 
   return {
@@ -185,5 +224,6 @@ export function useForYouSession() {
     fetchNextPage,
     hideItem,
     refreshSession,
+    checkForFreshness,
   };
 }

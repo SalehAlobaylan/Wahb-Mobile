@@ -2,12 +2,14 @@ import {
   commentsResponseSchema,
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
+  forYouSessionFreshnessResponseSchema,
   interactionResponseSchema,
   moderationReasonSchema,
   moderationReportResponseSchema,
   interactionTypeSchema,
   historyResponseSchema,
   preferencesResponseSchema,
+  sourcePreferenceResponseSchema,
   savedContentResponseSchema,
   topicPickerResponseSchema,
   articleContentResponseSchema,
@@ -15,6 +17,7 @@ import {
   transcriptResponseSchema,
   type ForYouFeedResponse,
   type ForYouSessionResponse,
+  type ForYouSessionFreshnessResponse,
   type InteractionType,
   type ArticleContent,
   type NewsFeedResponse,
@@ -34,6 +37,7 @@ export type ForYouPageRequest = {
   limit?: number;
   installationId: string;
   excludeSeen?: boolean;
+  contentLanguage?: 'ar' | 'en' | 'both';
   signal?: AbortSignal;
 };
 
@@ -47,6 +51,9 @@ export type CmsApi = {
   getForYouSessionPage(
     request: ForYouSessionPageRequest,
   ): Promise<ForYouSessionResponse>;
+  getForYouSessionFreshness(
+    request: ForYouSessionFreshnessRequest,
+  ): Promise<ForYouSessionFreshnessResponse>;
   getComments(request: CommentsRequest): Promise<CommentsResponse>;
   getTranscript(
     transcriptId: string,
@@ -61,6 +68,8 @@ export type CmsApi = {
   getTopicPicker(signal?: AbortSignal): Promise<TopicPickerResponse>;
   getPreferences(signal?: AbortSignal): Promise<PreferencesResponse>;
   updateDeclaredTopics(topicIds: string[]): Promise<PreferencesResponse>;
+  muteSource(contentId: string): Promise<void>;
+  unmuteSource(sourceKey: string): Promise<void>;
   reportModeration(request: ModerationReportRequest): Promise<void>;
   blockAuthor(authorId: string): Promise<void>;
   unblockAuthor(authorId: string): Promise<void>;
@@ -94,11 +103,19 @@ export type ForYouSessionRequest = {
   installationId: string;
   limit?: number;
   signal?: AbortSignal;
+  contentLanguage?: 'ar' | 'en' | 'both';
 };
 
 export type ForYouSessionPageRequest = ForYouSessionRequest & {
   sessionId: string;
   cursor?: string;
+};
+
+export type ForYouSessionFreshnessRequest = Pick<
+  ForYouSessionRequest,
+  'installationId' | 'signal'
+> & {
+  sessionId: string;
 };
 
 export type CommentsRequest = {
@@ -118,6 +135,7 @@ export type SavedContentRequest = {
 };
 
 export type HistoryRequest = {
+  installationId: string;
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
@@ -128,6 +146,7 @@ export type ModerationReportRequest = {
   targetId: string;
   reason: ModerationReason;
   detail?: string;
+  installationId: string;
   idempotencyKey: string;
 };
 
@@ -160,6 +179,7 @@ export function createCmsApi(transport: Transport): CmsApi {
       limit = 10,
       installationId,
       excludeSeen = false,
+      contentLanguage,
       signal,
     }) {
       return transport.request(
@@ -170,6 +190,7 @@ export function createCmsApi(transport: Transport): CmsApi {
             limit,
             session_id: installationId,
             ...(excludeSeen ? { exclude_seen: true } : {}),
+            ...(contentLanguage ? { content_language: contentLanguage } : {}),
           },
           signal,
           authenticated: true,
@@ -177,12 +198,21 @@ export function createCmsApi(transport: Transport): CmsApi {
         forYouFeedResponseSchema,
       );
     },
-    createForYouSession({ installationId, limit = 10, signal }) {
+    createForYouSession({
+      installationId,
+      limit = 10,
+      signal,
+      contentLanguage,
+    }) {
       return transport.request(
         {
           path: '/api/v1/feed/foryou/sessions',
           method: 'POST',
-          query: { limit, session_id: installationId },
+          query: {
+            limit,
+            session_id: installationId,
+            ...(contentLanguage ? { content_language: contentLanguage } : {}),
+          },
           signal,
           authenticated: true,
         },
@@ -208,6 +238,17 @@ export function createCmsApi(transport: Transport): CmsApi {
           authenticated: true,
         },
         forYouSessionResponseSchema,
+      );
+    },
+    getForYouSessionFreshness({ installationId, sessionId, signal }) {
+      return transport.request(
+        {
+          path: `/api/v1/feed/foryou/sessions/${sessionId}/freshness`,
+          query: { session_id: installationId },
+          signal,
+          authenticated: true,
+        },
+        forYouSessionFreshnessResponseSchema,
       );
     },
     getComments({ contentId, installationId, cursor, limit = 20, signal }) {
@@ -321,11 +362,15 @@ export function createCmsApi(transport: Transport): CmsApi {
         savedContentResponseSchema,
       );
     },
-    getHistory({ cursor, limit = 20, signal }) {
+    getHistory({ installationId, cursor, limit = 20, signal }) {
       return transport.request(
         {
           path: '/api/v1/interactions/history',
-          query: { ...(cursor ? { cursor } : {}), limit },
+          query: {
+            ...(cursor ? { cursor } : {}),
+            limit,
+            session_id: installationId,
+          },
           signal,
           authenticated: true,
         },
@@ -366,11 +411,33 @@ export function createCmsApi(transport: Transport): CmsApi {
         preferencesResponseSchema,
       );
     },
+    async muteSource(contentId) {
+      await transport.request(
+        {
+          path: `/api/v1/preferences/sources/${contentId}/mute`,
+          method: 'POST',
+          authenticated: true,
+        },
+        sourcePreferenceResponseSchema,
+      );
+    },
+    async unmuteSource(sourceKey) {
+      await transport.request(
+        {
+          path: '/api/v1/preferences/sources/mute',
+          method: 'DELETE',
+          query: { source_key: sourceKey },
+          authenticated: true,
+        },
+        sourcePreferenceResponseSchema,
+      );
+    },
     async reportModeration({
       targetType,
       targetId,
       reason,
       detail,
+      installationId,
       idempotencyKey,
     }) {
       moderationReasonSchema.parse(reason);
@@ -378,6 +445,7 @@ export function createCmsApi(transport: Transport): CmsApi {
         {
           path: '/api/v1/moderation/reports',
           method: 'POST',
+          query: { installation_id: installationId },
           authenticated: true,
           idempotencyKey,
           body: {

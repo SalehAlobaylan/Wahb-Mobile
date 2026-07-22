@@ -5,7 +5,7 @@ import { migrations } from './migrations';
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
     expect(migrations.map(({ version }) => version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
@@ -62,5 +62,22 @@ describe('database migrations', () => {
     expect(migrations[8]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS tombstoned_content_items',
     );
+  });
+
+  it('records only stronger playback classifications for a frozen item', () => {
+    expect(migrations[9]?.statements).toContain('consumption_classification');
+  });
+
+  it('does not assign legacy article state to a new identity', () => {
+    expect(migrations[10]?.statements).toContain('article_snapshots_v2');
+    expect(migrations[10]?.statements).toContain('identity_scope');
+  });
+
+  it('recovers a stale in-flight outbox claim after termination', () => {
+    expect(migrations[11]?.statements).toContain('claimed_at');
+  });
+
+  it('can park account work while credentials are being restored', () => {
+    expect(migrations[12]?.statements).toContain("'auth_blocked'");
   });
 });

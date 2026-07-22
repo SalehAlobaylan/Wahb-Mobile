@@ -19,6 +19,10 @@ import { HttpError } from '@/core/api';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import { useAuth } from './auth-provider';
+import {
+  recoveryActionForAuthError,
+  type AuthRecoveryAction,
+} from './auth-recovery';
 
 type Flow =
   | 'sign-in'
@@ -76,6 +80,8 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryAction, setRecoveryAction] =
+    useState<AuthRecoveryAction>(null);
   const [resendSeconds, setResendSeconds] = useState(0);
   const title = useMemo(() => t(`auth.${flow}.title`), [flow, t]);
   const linkNotice =
@@ -99,6 +105,7 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
   const submit = async () => {
     setError(null);
     setNotice(null);
+    setRecoveryAction(null);
     if (
       (flow === 'reset-password' || flow === 'register') &&
       password !== confirmPassword
@@ -145,6 +152,9 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
       }
     } catch (nextError) {
       setError(t(errorKey(nextError)));
+      if (flow === 'verify-email' || flow === 'reset-password') {
+        setRecoveryAction(recoveryActionForAuthError(flow, nextError));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -245,6 +255,22 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
             <Text accessibilityLiveRegion="polite" style={styles.notice}>
               {notice || linkNotice}
             </Text>
+          ) : null}
+          {recoveryAction ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.replace(
+                  recoveryAction === 'resend-verification'
+                    ? '/check-email'
+                    : '/forgot-password',
+                )
+              }
+            >
+              <Text style={styles.link}>
+                {t(`auth.recovery.${recoveryAction}`)}
+              </Text>
+            </Pressable>
           ) : null}
           <Pressable
             testID="auth-submit"

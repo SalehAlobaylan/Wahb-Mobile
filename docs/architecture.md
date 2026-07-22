@@ -35,7 +35,7 @@ belongs under `src/core`. Brand tokens and reusable primitives belong under
 | Durable operational state | SQLite                     | frozen feed sessions, event outbox   |
 | Credentials               | SecureStore                | access/refresh credentials           |
 | Transient interface state | Zustand or component state | sheet state, active display mode     |
-| Small preferences         | MMKV when introduced       | language override, playback defaults |
+| Small preferences         | Expo SQLite KV             | language override, playback defaults |
 
 Do not duplicate server state into Zustand. Do not put tokens in AsyncStorage,
 SQLite, logs, or query persistence.
@@ -67,12 +67,26 @@ the trailing pages asks the existing session for another cursor-bound page, not
 a fresh ranking request. Button navigation remains available alongside the
 swipe gesture for accessibility.
 
-Hide This Item is a durable local preference scoped to the installation
-identity. It atomically removes the item from the active snapshot, compacts the
-remaining positions, and filters it from later locally materialized pages. CMS
-does not yet offer the required installation/account hide or topic/source
-preference contracts, so the app must not present this local hide as a global
-ranking preference or expose a fake Not Interested action.
+Hide This Item is immediate in the local frozen session and durable through the
+identity-scoped CMS `hide` interaction. It atomically removes the item from the
+active snapshot, compacts remaining positions, and the server excludes it from
+later sessions without turning it into an affinity signal. Authenticated source
+muting remains a distinct, reversible CMS preference; neither control is
+presented as a local-only ranking promise.
+
+Media preparation has no player ownership: a policy uses network cost,
+foreground state, power-saver state, memory warning, and measured swipe rate to
+select at most ±2 neighbouring sources on Wi-Fi or one next source on cellular.
+It performs only abortable `HEAD` metadata probes and cancels the previous
+generation on any constrained state. It never downloads media, creates a second
+Now Playing owner, or promises offline playback.
+
+When a For You item completes, the playback controller—not the feed screen—owns
+the cancellable three-second Up Next countdown. The feed may supply only the
+next item already present in the same frozen session and persists the resulting
+position; pausing, replaying, reverse seeking, swiping, refresh, hiding, or
+unmounting cancels the transition. The controller then starts exactly that one
+next item, updating system media metadata without an intermediate player.
 
 ## Interaction delivery
 
@@ -184,7 +198,23 @@ as a download. The future subsystem needs:
 - background transfer behavior validated separately on iOS and Android
 
 Download tables and a transfer engine should be introduced only with that
-contract. The current database migration layer is ready to add them safely.
+contract. `src/features/downloads/contracts.ts` provides dependency-free
+manifest/grant/artifact/cache contracts, but no v1 UI or persistence promises.
+`source-resolver.ts` can place a future local artifact before CMS candidates
+only when the catalog has already proved its immutable ID, checksum, complete
+verification state, current identity scope, rights expiry, and `file://` URL.
+Every other local candidate is a cache miss and resolves through CMS normally.
+
+The current temporary cache boundary is bounded by bytes, entry count, and age;
+it may hold preparation-safe metadata/artwork only and can be evicted by the
+OS. It is never called a download and never promises offline playback. A real
+download feature still requires immutable Aggregation artifacts plus CMS
+manifest/grant APIs, then a separate physical transfer/recovery evaluation.
+
+Expo SQLite KV is deliberately retained for the current tiny, non-sensitive
+preference set. It is already part of the app's SQLite dependency surface, has
+no additional native module or CNG cost, and can be migrated only if measured
+preference latency or volume makes that necessary.
 
 ## Identity and privacy
 
@@ -262,10 +292,12 @@ correlation is a truncated SHA-256 hash of the IAM user ID; raw IDs, emails,
 content, credentials, URLs, transcript/article text, and comments never leave
 the app through diagnostics.
 
-The only lifecycle measurements are app start, frozen-session recovery,
-playback start/buffer/fallback, and outbox health. Ranking and product behavior
-remain CMS-owned; the native client does not send behavioral analytics to a
-third party.
+The only lifecycle measurements are bounded app-start and For You first-render
+latency, frozen-session recovery, playback start/buffer/fallback duration, and
+outbox health/flush duration. Event names and dimensions are both allow-listed;
+arbitrary error names are reduced to a generic application error. Ranking and
+product behavior remain CMS-owned; the native client does not send behavioral
+analytics to a third party.
 
 ## M10 offline and release gates
 

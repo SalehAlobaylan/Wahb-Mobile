@@ -19,6 +19,7 @@ import {
   ArrowLeft,
   Bookmark,
   ExternalLink,
+  Flag,
   Share2,
   X,
 } from 'lucide-react-native';
@@ -28,7 +29,12 @@ import { HttpError, type ArticleContent } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
+import { getInstallationId } from '@/core/identity/installation-id';
+import { identityScope as toIdentityScope } from '@/core/identity/identity-scope';
 import { useAuth } from '@/features/auth/auth-provider';
+import { NewsNowPlayingTile } from '@/features/news/news-now-playing-tile';
+import { ReportSheet } from '@/features/moderation/report-sheet';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import {
@@ -91,7 +97,8 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const { t } = useTranslation();
   const db = useSQLiteContext();
   const outbox = useOutbox();
-  const { clients } = useAuth();
+  const reducedMotion = useReducedMotion();
+  const { clients, subject } = useAuth();
   const scrollRef = useRef<ScrollView>(null);
   const positionRef = useRef(0);
   const lastPersistAt = useRef(0);
@@ -100,19 +107,28 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
     value: boolean;
   } | null>(null);
   const [sourcePrompt, setSourcePrompt] = useState<SourcePrompt>(null);
+  const [isReportVisible, setIsReportVisible] = useState(false);
+  const installationQuery = useQuery({
+    queryKey: ['installation-identity'],
+    queryFn: getInstallationId,
+    staleTime: Infinity,
+  });
+  const scope = installationQuery.data
+    ? toIdentityScope(installationQuery.data, subject?.id)
+    : null;
   const query = useQuery<ReaderDocument>({
-    queryKey: ['article', id],
-    enabled: Boolean(id),
+    queryKey: ['article', scope, id],
+    enabled: Boolean(id && scope),
     queryFn: async () => {
-      const cached = await loadArticleSnapshot(db, id!);
-      const readerPosition = await loadReaderPosition(db, id!);
+      const cached = await loadArticleSnapshot(db, scope!, id!);
+      const readerPosition = await loadReaderPosition(db, scope!, id!);
       try {
         const article = await clients.cms.getArticleContent(id!);
-        await saveArticleSnapshot(db, article);
+        await saveArticleSnapshot(db, scope!, article);
         return { article, readerPosition, source: 'network' };
       } catch (error) {
         if (error instanceof HttpError && error.context.status === 404) {
-          await deleteArticleSnapshot(db, id!);
+          await deleteArticleSnapshot(db, scope!, id!);
           throw error;
         }
         if (cached) {
@@ -144,28 +160,28 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
 
   useEffect(
     () => () => {
-      if (id) {
-        void saveReaderPosition(db, id, positionRef.current);
+      if (id && scope) {
+        void saveReaderPosition(db, scope, id, positionRef.current);
       }
     },
-    [db, id],
+    [db, id, scope],
   );
 
   const persistPosition = useCallback(
     (offsetY: number, force = false) => {
-      if (!id) {
+      if (!id || !scope) {
         return;
       }
       positionRef.current = Math.max(0, offsetY);
       const now = Date.now();
       if (force || now - lastPersistAt.current >= 2_000) {
         lastPersistAt.current = now;
-        void saveReaderPosition(db, id, positionRef.current).catch((error) =>
-          captureException('article_reader_position_failed', error),
+        void saveReaderPosition(db, scope, id, positionRef.current).catch(
+          (error) => captureException('article_reader_position_failed', error),
         );
       }
     },
-    [db, id],
+    [db, id, scope],
   );
 
   const toggleBookmark = useCallback(async () => {
@@ -291,6 +307,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
             <ArrowLeft color={colors.ink} size={22} />
           </Pressable>
           <View style={styles.actions}>
+            <NewsNowPlayingTile />
             <Pressable
               accessibilityLabel={
                 isBookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
@@ -312,6 +329,14 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
               style={styles.iconButton}
             >
               <Share2 color={colors.ink} size={20} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('moderation.report')}
+              accessibilityRole="button"
+              onPress={() => setIsReportVisible(true)}
+              style={styles.iconButton}
+            >
+              <Flag color={colors.ink} size={20} />
             </Pressable>
           </View>
         </View>
@@ -370,7 +395,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           ))}
       </ScrollView>
       <Modal
-        animationType="fade"
+        animationType={reducedMotion ? 'none' : 'fade'}
         onRequestClose={() => setSourcePrompt(null)}
         transparent
         visible={Boolean(sourcePrompt)}
@@ -417,6 +442,17 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           </View>
         </View>
       </Modal>
+      <ReportSheet
+        onClose={() => setIsReportVisible(false)}
+        onReported={() => {
+          setIsReportVisible(false);
+          // Reporting removes this article from the active reader immediately;
+          // its independent History record remains intact.
+          router.back();
+        }}
+        target={isReportVisible ? { id: article.id, type: 'content' } : null}
+        visible={isReportVisible}
+      />
     </SafeAreaView>
   );
 }

@@ -17,7 +17,10 @@ import { Platform } from 'react-native';
 
 import { initializeDatabase } from '@/core/database/migrations';
 import { initializeDiagnostics } from '@/core/diagnostics/sentry';
-import { captureDiagnostic } from '@/core/diagnostics/diagnostics';
+import {
+  captureDiagnostic,
+  elapsedMilliseconds,
+} from '@/core/diagnostics/diagnostics';
 import { setHapticsEnabled } from '@/core/haptics/feedback';
 import '@/core/i18n';
 import { bootstrapLanguagePreferences } from '@/features/settings/language-preferences';
@@ -28,6 +31,7 @@ import {
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
+import { ConnectivityProvider } from '@/core/network/connectivity-provider';
 import { AuthProvider } from '@/features/auth/auth-provider';
 import { LinkDispatcherProvider } from '@/features/auth/link-dispatcher-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
@@ -35,6 +39,7 @@ import { NonFeedNowPlaying } from '@/features/playback/non-feed-now-playing';
 
 void SplashScreen.preventAutoHideAsync();
 initializeDiagnostics();
+const appLaunchStartedAt = performance.now();
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
@@ -64,6 +69,7 @@ export default function RootLayout() {
   useEffect(() => {
     captureDiagnostic('app_start', {
       build: Constants.expoConfig?.ios?.buildNumber ?? '1',
+      duration_ms: elapsedMilliseconds(appLaunchStartedAt),
       platform: Platform.OS,
     });
   }, []);
@@ -81,35 +87,37 @@ export default function RootLayout() {
   return (
     <AppErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
-          <AuthProvider>
-            <OutboxProvider>
-              <PlaybackProvider>
-                <StatusBar style="auto" />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="news" />
-                  <Stack.Screen name="article/[id]" />
-                  <Stack.Screen name="sign-in" />
-                  <Stack.Screen name="register" />
-                  <Stack.Screen name="check-email" />
-                  <Stack.Screen name="forgot-password" />
-                  <Stack.Screen name="reset-password" />
-                  <Stack.Screen name="verify-email" />
-                  <Stack.Screen name="account" />
-                  <Stack.Screen name="profile" />
-                  <Stack.Screen name="interests" />
-                  <Stack.Screen name="saved" />
-                  <Stack.Screen name="history" />
-                  <Stack.Screen name="settings" />
-                  <Stack.Screen name="delete-account" />
-                </Stack>
-                <LinkDispatcherProvider />
-                <NonFeedNowPlaying />
-              </PlaybackProvider>
-            </OutboxProvider>
-          </AuthProvider>
-        </SQLiteProvider>
+        <ConnectivityProvider>
+          <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
+            <AuthProvider>
+              <OutboxProvider>
+                <PlaybackProvider>
+                  <StatusBar style="auto" />
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="news" />
+                    <Stack.Screen name="article/[id]" />
+                    <Stack.Screen name="sign-in" />
+                    <Stack.Screen name="register" />
+                    <Stack.Screen name="check-email" />
+                    <Stack.Screen name="forgot-password" />
+                    <Stack.Screen name="reset-password" />
+                    <Stack.Screen name="verify-email" />
+                    <Stack.Screen name="account" />
+                    <Stack.Screen name="profile" />
+                    <Stack.Screen name="interests" />
+                    <Stack.Screen name="saved" />
+                    <Stack.Screen name="history" />
+                    <Stack.Screen name="settings" />
+                    <Stack.Screen name="delete-account" />
+                  </Stack>
+                  <LinkDispatcherProvider />
+                  <NonFeedNowPlaying />
+                </PlaybackProvider>
+              </OutboxProvider>
+            </AuthProvider>
+          </SQLiteProvider>
+        </ConnectivityProvider>
       </QueryClientProvider>
     </AppErrorBoundary>
   );

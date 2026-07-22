@@ -19,9 +19,7 @@ import {
   UserRound,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
-import { useSQLiteContext } from 'expo-sqlite';
 
-import { clearLocalWahbData } from '@/core/database/reset-local-data';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import { useAuth } from './auth-provider';
@@ -29,7 +27,6 @@ import { useAuth } from './auth-provider';
 export function AccountScreen() {
   const { t } = useTranslation();
   const auth = useAuth();
-  const db = useSQLiteContext();
   const reset = () => {
     Alert.alert(t('account.resetTitle'), t('account.resetCopy'), [
       { style: 'cancel', text: t('account.cancel') },
@@ -37,9 +34,7 @@ export function AccountScreen() {
         style: 'destructive',
         text: t('account.resetAction'),
         onPress: () =>
-          void clearLocalWahbData(db)
-            .then(() => auth.resetLocalData())
-            .then(() => router.replace('/')),
+          void auth.resetLocalData().then(() => router.replace('/')),
       },
     ]);
   };
@@ -65,7 +60,7 @@ export function AccountScreen() {
               {auth.subject.email || t('account.signedIn')}
             </Text>
             <Pressable
-              testID="account-saved"
+              testID="account-profile"
               accessibilityRole="button"
               onPress={() => router.push('/profile')}
               style={styles.action}
@@ -74,7 +69,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.profile')}</Text>
             </Pressable>
             <Pressable
-              testID="account-delete"
+              testID="account-interests"
               accessibilityRole="button"
               onPress={() => router.push('/interests')}
               style={styles.action}
@@ -83,6 +78,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.interests')}</Text>
             </Pressable>
             <Pressable
+              testID="account-saved"
               accessibilityRole="button"
               onPress={() => router.push('/saved')}
               style={styles.action}
@@ -91,6 +87,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.saved')}</Text>
             </Pressable>
             <Pressable
+              testID="account-history"
               accessibilityRole="button"
               onPress={() => router.push('/history')}
               style={styles.action}
@@ -99,6 +96,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.history')}</Text>
             </Pressable>
             <Pressable
+              testID="account-sign-out"
               accessibilityRole="button"
               onPress={() => void auth.logout().then(() => router.replace('/'))}
               style={styles.action}
@@ -107,6 +105,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.signOut')}</Text>
             </Pressable>
             <Pressable
+              testID="account-delete"
               accessibilityRole="button"
               onPress={() => router.push('/delete-account')}
               style={[styles.action, styles.destructiveAction]}
@@ -139,6 +138,7 @@ export function AccountScreen() {
           <Text style={styles.actionText}>{t('settings.title')}</Text>
         </Pressable>
         <Pressable
+          testID="account-reset-local-data"
           accessibilityRole="button"
           onPress={reset}
           style={styles.action}

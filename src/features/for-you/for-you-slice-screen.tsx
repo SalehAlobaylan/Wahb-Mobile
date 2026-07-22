@@ -31,6 +31,8 @@ import {
   FlatList,
   type LayoutChangeEvent,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -45,6 +47,7 @@ import { useTranslation } from 'react-i18next';
 import {
   captureDiagnostic,
   captureException,
+  elapsedMilliseconds,
 } from '@/core/diagnostics/diagnostics';
 import { NetworkError } from '@/core/api';
 import {
@@ -53,10 +56,12 @@ import {
   hapticWarning,
 } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import { useConnectivity } from '@/core/network/connectivity-provider';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { FrozenForYouSession } from '@/features/feed-session/for-you-session-repository';
 import {
-  recordForYouCompletion,
+  recordForYouConsumption,
   recordForYouExposure,
   recordForYouProgress,
   updateForYouSessionPosition,
@@ -69,6 +74,7 @@ import {
   type ConsumptionState,
 } from '@/features/playback/consumption-classifier';
 import { usePlaybackController } from '@/features/playback/playback-provider';
+import { useMediaPreparation } from '@/features/playback/use-media-preparation';
 import {
   playbackRates,
   type PlaybackItem,
@@ -76,6 +82,7 @@ import {
 
 import { ForYouDetailSheet } from './for-you-detail-sheet';
 import { ReportSheet } from '@/features/moderation/report-sheet';
+import type { ForYouIntent } from './for-you-intents';
 
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
@@ -95,9 +102,18 @@ export function ForYouSliceScreen() {
     fetchNextPage,
     hideItem,
     refreshSession,
+    checkForFreshness,
   } = useForYouSession();
   const playback = usePlaybackController();
+  const {
+    cancelUpNext,
+    didReachEnd,
+    error: playbackError,
+    scheduleUpNext,
+  } = playback;
   const outbox = useOutbox();
+  const { reconnectSequence } = useConnectivity();
+  const reducedMotion = useReducedMotion();
   const { clients, subject } = useAuth();
   const consumption = useRef<{
     key: string;
@@ -117,7 +133,6 @@ export function ForYouSliceScreen() {
     sessionId: string;
     position: number;
   } | null>(null);
-  const [upNextSeconds, setUpNextSeconds] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasNewContent, setHasNewContent] = useState(false);
   const [displayMode, setDisplayMode] = useState<'fit' | 'fill' | 'transcript'>(
@@ -132,10 +147,14 @@ export function ForYouSliceScreen() {
   const feedListRef =
     useRef<FlatList<FrozenForYouSession['items'][number]>>(null);
   const lastPagerSessionId = useRef<string | null>(null);
+  const upNextPageFetch = useRef<string | null>(null);
   const diagnosedSessionId = useRef<string | null>(null);
+  const feedScreenStartedAt = useRef<number | null>(null);
   const pagerHasInteracted = useRef(false);
   const playbackPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pageHeight, setPageHeight] = useState(0);
+  const [swipeCardsPerSecond, setSwipeCardsPerSecond] = useState(0);
+  const scrollVelocity = useRef({ offsetY: 0, timestamp: 0, reportedAt: 0 });
   const [playbackPulse, setPlaybackPulse] = useState<'play' | 'pause' | null>(
     null,
   );
@@ -169,13 +188,34 @@ export function ForYouSliceScreen() {
         : null,
     [item],
   );
+  const sessionPlaybackItems = useMemo<PlaybackItem[]>(
+    () =>
+      session?.items.map(({ item: sessionItem }) => ({
+        id: sessionItem.id,
+        contentType: sessionItem.type,
+        title: sessionItem.title,
+        ...(sessionItem.source_name
+          ? { sourceName: sessionItem.source_name }
+          : {}),
+        ...(sessionItem.thumbnail_url
+          ? { artworkUrl: sessionItem.thumbnail_url }
+          : {}),
+        playback: sessionItem.playback,
+      })) ?? [],
+    [session?.items],
+  );
+  useMediaPreparation({
+    items: sessionPlaybackItems,
+    activeIndex: position,
+    swipeCardsPerSecond,
+  });
 
   const requiresConnection =
     isOfflineSnapshot && connectionRequiredForId === item?.id;
   const isCurrent = playback.item?.id === item?.id;
   const isVideoVisible = isCurrent && playback.kind === 'video';
   const showUpNext =
-    upNextSeconds !== null &&
+    playback.upNextSeconds !== null &&
     isCurrent &&
     playback.didReachEnd &&
     !playback.error &&
@@ -211,6 +251,10 @@ export function ForYouSliceScreen() {
   });
 
   useEffect(() => {
+    feedScreenStartedAt.current = performance.now();
+  }, []);
+
+  useEffect(() => {
     if (!session || !item || diagnosedSessionId.current === session.id) {
       return;
     }
@@ -218,27 +262,48 @@ export function ForYouSliceScreen() {
     // Keep first-render and session-health signals free of content/session
     // identifiers. CMS remains the only product and ranking event pipeline.
     const eventType = isOfflineSnapshot ? 'offline_snapshot' : 'stable';
-    captureDiagnostic('foryou_first_render', { event_type: eventType });
-    captureDiagnostic('foryou_session_health', { event_type: eventType });
+    const duration_ms = elapsedMilliseconds(
+      feedScreenStartedAt.current ?? performance.now(),
+    );
+    captureDiagnostic('foryou_first_render', {
+      event_type: eventType,
+      duration_ms,
+    });
+    captureDiagnostic('foryou_session_health', {
+      event_type: eventType,
+      duration_ms,
+    });
   }, [isOfflineSnapshot, item, session]);
 
-  const queueCompletion = useCallback(
+  const queueConsumption = useCallback(
     async (
       targetSessionId: string,
       targetPosition: number,
       targetIdentityScope: string,
       state: ConsumptionState,
       durationSeconds: number,
+      terminal = false,
     ) => {
-      if (classifyConsumption(state, durationSeconds) !== 'completed') {
+      const classification = classifyConsumption(state, durationSeconds);
+      if (!classification) {
+        return;
+      }
+      // A fresh item starts below the quick-skip threshold. Do not turn that
+      // transient state into a negative delivery signal while the person is
+      // still listening; quick/sample become final evidence when they leave.
+      if (
+        !terminal &&
+        (classification === 'quick_skip' || classification === 'sampled')
+      ) {
         return;
       }
       try {
-        const recorded = await recordForYouCompletion(
+        const recorded = await recordForYouConsumption(
           db,
           targetSessionId,
           targetPosition,
           targetIdentityScope,
+          classification,
           state.accumulatedPlayedSeconds,
           state.furthestPositionSeconds,
         );
@@ -246,7 +311,7 @@ export function ForYouSliceScreen() {
           await outbox.flush();
         }
       } catch (error) {
-        captureException('foryou_completion_queue_failed', error);
+        captureException('foryou_consumption_queue_failed', error);
       }
     },
     [db, outbox],
@@ -319,7 +384,7 @@ export function ForYouSliceScreen() {
       playback.phase === 'playing',
     );
     consumption.current = { key, state: next };
-    void queueCompletion(
+    void queueConsumption(
       session.id,
       position,
       identityScope,
@@ -334,7 +399,7 @@ export function ForYouSliceScreen() {
     playback.durationSeconds,
     playback.phase,
     position,
-    queueCompletion,
+    queueConsumption,
     session,
   ]);
 
@@ -399,57 +464,71 @@ export function ForYouSliceScreen() {
     session,
   ]);
 
-  async function selectPosition(
-    nextPosition: number,
-    options: { autoplay?: boolean } = {},
-  ) {
-    setUpNextSeconds(null);
-    if (!session || nextPosition < 0 || nextPosition >= session.items.length) {
-      if (session && nextPosition === session.items.length) {
-        const didAppend = await fetchNextPage();
-        if (didAppend) {
-          setSelection({ sessionId: session.id, position: nextPosition });
-          if (options.autoplay) {
-            setPendingAutoplay({
-              sessionId: session.id,
-              position: nextPosition,
-            });
+  const selectPosition = useCallback(
+    async (nextPosition: number, options: { autoplay?: boolean } = {}) => {
+      playback.cancelUpNext();
+      if (
+        !session ||
+        nextPosition < 0 ||
+        nextPosition >= session.items.length
+      ) {
+        if (session && nextPosition === session.items.length) {
+          const didAppend = await fetchNextPage();
+          if (didAppend) {
+            setSelection({ sessionId: session.id, position: nextPosition });
+            if (options.autoplay) {
+              setPendingAutoplay({
+                sessionId: session.id,
+                position: nextPosition,
+              });
+            }
           }
         }
+        return;
       }
-      return;
-    }
 
-    if (session && identityScope && consumption.current) {
-      void queueCompletion(
-        session.id,
-        position,
-        identityScope,
-        consumption.current.state,
-        playback.durationSeconds || item?.duration_sec || 0,
-      );
-    }
-    playback.pause();
-    setSelection({ sessionId: session.id, position: nextPosition });
-    if (options.autoplay) {
-      setPendingAutoplay({ sessionId: session.id, position: nextPosition });
-    } else {
-      setPendingAutoplay(null);
-    }
-    try {
-      await updateForYouSessionPosition(
-        db,
-        session.id,
-        position,
-        playback.currentTimeSeconds * 1_000,
-      );
-      await updateForYouSessionPosition(db, session.id, nextPosition, 0);
-    } catch (error) {
-      captureException('feed_session_position_write_failed', error);
-    }
-  }
+      if (session && identityScope && consumption.current) {
+        void queueConsumption(
+          session.id,
+          position,
+          identityScope,
+          consumption.current.state,
+          playback.durationSeconds || item?.duration_sec || 0,
+          true,
+        );
+      }
+      playback.pause();
+      setSelection({ sessionId: session.id, position: nextPosition });
+      if (options.autoplay) {
+        setPendingAutoplay({ sessionId: session.id, position: nextPosition });
+      } else {
+        setPendingAutoplay(null);
+      }
+      try {
+        await updateForYouSessionPosition(
+          db,
+          session.id,
+          position,
+          playback.currentTimeSeconds * 1_000,
+        );
+        await updateForYouSessionPosition(db, session.id, nextPosition, 0);
+      } catch (error) {
+        captureException('feed_session_position_write_failed', error);
+      }
+    },
+    [
+      db,
+      fetchNextPage,
+      identityScope,
+      item?.duration_sec,
+      playback,
+      position,
+      queueConsumption,
+      session,
+    ],
+  );
 
-  function togglePlayback() {
+  const togglePlayback = useCallback(() => {
     if (!activePlaybackItem) {
       return;
     }
@@ -460,16 +539,18 @@ export function ForYouSliceScreen() {
       return;
     }
 
-    const nextPulse =
-      isCurrent && playback.phase === 'playing' ? 'pause' : 'play';
-    setPlaybackPulse(nextPulse);
-    if (playbackPulseTimer.current) {
-      clearTimeout(playbackPulseTimer.current);
+    if (!reducedMotion) {
+      const nextPulse =
+        isCurrent && playback.phase === 'playing' ? 'pause' : 'play';
+      setPlaybackPulse(nextPulse);
+      if (playbackPulseTimer.current) {
+        clearTimeout(playbackPulseTimer.current);
+      }
+      playbackPulseTimer.current = setTimeout(() => {
+        setPlaybackPulse(null);
+        playbackPulseTimer.current = null;
+      }, 620);
     }
-    playbackPulseTimer.current = setTimeout(() => {
-      setPlaybackPulse(null);
-      playbackPulseTimer.current = null;
-    }, 620);
 
     if (isCurrent && playback.error) {
       void playback.start(activePlaybackItem, {
@@ -480,13 +561,13 @@ export function ForYouSliceScreen() {
     }
 
     if (isCurrent && playback.phase === 'playing') {
-      setUpNextSeconds(null);
+      playback.cancelUpNext();
       playback.pause();
       return;
     }
 
     if (isCurrent) {
-      setUpNextSeconds(null);
+      playback.cancelUpNext();
       playback.play();
       return;
     }
@@ -495,7 +576,14 @@ export function ForYouSliceScreen() {
       positionSeconds: (active?.playbackPositionMs ?? 0) / 1_000,
       autoplay: true,
     });
-  }
+  }, [
+    active?.playbackPositionMs,
+    activePlaybackItem,
+    isCurrent,
+    isOfflineSnapshot,
+    playback,
+    reducedMotion,
+  ]);
 
   const cyclePlaybackRate = useCallback(() => {
     if (!isCurrent) {
@@ -511,14 +599,39 @@ export function ForYouSliceScreen() {
     hapticSelection();
   }, [isCurrent, playback]);
 
+  const dispatchIntent = useCallback(
+    (intent: ForYouIntent) => {
+      switch (intent) {
+        case 'toggle-playback':
+          togglePlayback();
+          return;
+        case 'previous-item':
+          void selectPosition(position - 1);
+          return;
+        case 'next-item':
+          void selectPosition(position + 1);
+          return;
+        case 'open-comments':
+          setDetailTab('comments');
+          return;
+        case 'open-about':
+          setDetailTab('about');
+          return;
+        case 'open-overflow':
+          setIsOverflowVisible(true);
+      }
+    },
+    [position, selectPosition, togglePlayback],
+  );
+
   const refreshForYouSession = useCallback(async () => {
-    setUpNextSeconds(null);
+    playback.cancelUpNext();
     playback.pause();
     setPendingAutoplay(null);
     setIsRefreshing(true);
     try {
       await refreshSession();
-      setHasNewContent(true);
+      setHasNewContent(false);
       hapticSuccess();
     } catch (error) {
       captureException('foryou_session_refresh_failed', error);
@@ -527,6 +640,24 @@ export function ForYouSliceScreen() {
       setIsRefreshing(false);
     }
   }, [playback, refreshSession]);
+
+  const checkForNewContent = useCallback(async () => {
+    try {
+      setHasNewContent(await checkForFreshness());
+    } catch (error) {
+      // A freshness check is advisory. Never disturb a readable frozen session
+      // if it fails or its six-hour server snapshot has expired.
+      captureException('foryou_freshness_check_failed', error);
+    }
+  }, [checkForFreshness]);
+
+  useEffect(() => {
+    if (reconnectSequence > 0) {
+      const task = setTimeout(() => void checkForNewContent(), 0);
+      return () => clearTimeout(task);
+    }
+    return undefined;
+  }, [checkForNewContent, reconnectSequence]);
 
   const toggleEngagement = useCallback(
     async (kind: 'like' | 'bookmark') => {
@@ -591,8 +722,9 @@ export function ForYouSliceScreen() {
     const shouldAutoplay = isCurrent && playback.phase === 'playing';
     try {
       const updated = await hideItem(item.id);
+      await outbox.enqueue({ contentId: item.id, type: 'hide' });
       playback.dismiss();
-      setUpNextSeconds(null);
+      playback.cancelUpNext();
       setPendingAutoplay(
         updated && shouldAutoplay
           ? { sessionId: updated.id, position: updated.activePosition }
@@ -608,11 +740,49 @@ export function ForYouSliceScreen() {
       captureException('foryou_hide_item_failed', error);
       hapticWarning();
     }
-  }, [hideItem, isCurrent, item, playback]);
+  }, [hideItem, isCurrent, item, outbox, playback]);
+
+  const muteCurrentSource = useCallback(async () => {
+    if (!item || !subject) {
+      return;
+    }
+    try {
+      await clients.cms.muteSource(item.id);
+      hapticSuccess();
+      await hideCurrentItem();
+    } catch (error) {
+      captureException('foryou_mute_source_failed', error, {
+        contentId: item.id,
+      });
+      hapticWarning();
+    }
+  }, [clients.cms, hideCurrentItem, item, subject]);
 
   const handlePagerLayout = useCallback((event: LayoutChangeEvent) => {
     setPageHeight(event.nativeEvent.layout.height);
   }, []);
+
+  const observePagerVelocity = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      if (pageHeight <= 0) return;
+      const timestamp = event.timeStamp;
+      const offsetY = event.nativeEvent.contentOffset.y;
+      const previous = scrollVelocity.current;
+      if (previous.timestamp > 0 && timestamp > previous.timestamp) {
+        const cardsPerSecond =
+          Math.abs(offsetY - previous.offsetY) /
+          pageHeight /
+          ((timestamp - previous.timestamp) / 1_000);
+        if (timestamp - previous.reportedAt >= 100) {
+          setSwipeCardsPerSecond(Math.min(20, cardsPerSecond));
+          scrollVelocity.current.reportedAt = timestamp;
+        }
+      }
+      scrollVelocity.current.offsetY = offsetY;
+      scrollVelocity.current.timestamp = timestamp;
+    },
+    [pageHeight],
+  );
 
   useEffect(
     () => () => {
@@ -640,68 +810,106 @@ export function ForYouSliceScreen() {
       .finally(() => setPendingAutoplay(null));
   }, [activePlaybackItem, pendingAutoplay, playback, position, session?.id]);
 
+  const advanceUpNext = useCallback(
+    async (
+      expectedSessionId: string,
+      nextPosition: number,
+    ): Promise<boolean> => {
+      if (
+        !session ||
+        session.id !== expectedSessionId ||
+        nextPosition < 0 ||
+        nextPosition >= session.items.length
+      ) {
+        return false;
+      }
+      if (identityScope && consumption.current) {
+        void queueConsumption(
+          session.id,
+          position,
+          identityScope,
+          consumption.current.state,
+          playback.durationSeconds || item?.duration_sec || 0,
+          true,
+        );
+      }
+      setSelection({ sessionId: session.id, position: nextPosition });
+      setPendingAutoplay(null);
+      try {
+        await updateForYouSessionPosition(
+          db,
+          session.id,
+          position,
+          playback.currentTimeSeconds * 1_000,
+        );
+        await updateForYouSessionPosition(db, session.id, nextPosition, 0);
+        return true;
+      } catch (error) {
+        captureException('feed_session_position_write_failed', error);
+        return false;
+      }
+    },
+    [
+      db,
+      identityScope,
+      item?.duration_sec,
+      playback.currentTimeSeconds,
+      playback.durationSeconds,
+      position,
+      queueConsumption,
+      session,
+    ],
+  );
+
   useEffect(() => {
     if (
       !session ||
       !item ||
       !isCurrent ||
-      !playback.didReachEnd ||
-      playback.error ||
+      !didReachEnd ||
+      playbackError ||
       (position >= session.items.length - 1 && session.cursor === null)
     ) {
+      cancelUpNext();
       return;
     }
-
-    const startTimer = setTimeout(() => setUpNextSeconds(3), 0);
-    const interval = setInterval(() => {
-      setUpNextSeconds((current) =>
-        current === null ? null : Math.max(0, current - 1),
-      );
-    }, 1_000);
-    const timer = setTimeout(() => {
-      void (async () => {
-        const nextPosition = position + 1;
-        if (nextPosition < session.items.length) {
-          playback.pause();
-          setSelection({ sessionId: session.id, position: nextPosition });
-          setPendingAutoplay({ sessionId: session.id, position: nextPosition });
-          try {
-            await updateForYouSessionPosition(
-              db,
-              session.id,
-              position,
-              playback.currentTimeSeconds * 1_000,
-            );
-            await updateForYouSessionPosition(db, session.id, nextPosition, 0);
-          } catch (error) {
-            captureException('feed_session_position_write_failed', error);
-          }
-          return;
-        }
-        const didAppend = await fetchNextPage();
-        if (didAppend) {
-          setSelection({ sessionId: session.id, position: nextPosition });
-          setPendingAutoplay({ sessionId: session.id, position: nextPosition });
-        }
-      })();
-    }, 3_000);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timer);
-      clearTimeout(startTimer);
-    };
+    const nextPosition = position + 1;
+    const nextItem = sessionPlaybackItems[nextPosition];
+    if (!nextItem) {
+      const fetchKey = `${session.id}:${position}`;
+      if (upNextPageFetch.current !== fetchKey) {
+        upNextPageFetch.current = fetchKey;
+        void fetchNextPage();
+      }
+      return;
+    }
+    upNextPageFetch.current = null;
+    scheduleUpNext({
+      sessionId: session.id,
+      currentItemId: item.id,
+      nextItem,
+      onAdvance: () => advanceUpNext(session.id, nextPosition),
+    });
   }, [
+    advanceUpNext,
+    fetchNextPage,
     isCurrent,
     item,
-    playback.didReachEnd,
-    playback.error,
-    playback.currentTimeSeconds,
+    cancelUpNext,
+    didReachEnd,
+    playbackError,
     position,
+    scheduleUpNext,
     session,
-    db,
-    fetchNextPage,
-    playback,
+    sessionPlaybackItems,
   ]);
+
+  useEffect(
+    () => () => {
+      cancelUpNext();
+    },
+    [cancelUpNext],
+  );
 
   useEffect(() => {
     if (!session || pageHeight <= 0) {
@@ -751,6 +959,7 @@ export function ForYouSliceScreen() {
         keyExtractor={(entry) => `${session.id}:${entry.item.id}`}
         maxToRenderPerBatch={3}
         onMomentumScrollEnd={(event) => {
+          setSwipeCardsPerSecond(0);
           if (pageHeight <= 0) {
             return;
           }
@@ -785,6 +994,8 @@ export function ForYouSliceScreen() {
         onScrollBeginDrag={() => {
           pagerHasInteracted.current = true;
         }}
+        onScroll={observePagerVelocity}
+        scrollEventThrottle={100}
         pagingEnabled
         ref={feedListRef}
         refreshControl={
@@ -803,7 +1014,7 @@ export function ForYouSliceScreen() {
           <Pressable
             accessible={false}
             disabled={index !== position}
-            onPress={togglePlayback}
+            onPress={() => dispatchIntent('toggle-playback')}
             style={[styles.page, { height: pageHeight }]}
           >
             {index === position && isVideoVisible ? (
@@ -890,9 +1101,16 @@ export function ForYouSliceScreen() {
           <View>
             <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
             {hasNewContent ? (
-              <Text style={styles.newContentLabel}>
-                {t('foryou.newContent')}
-              </Text>
+              <Pressable
+                accessibilityLabel={t('foryou.newContent')}
+                accessibilityRole="button"
+                disabled={isRefreshing}
+                onPress={() => void refreshForYouSession()}
+              >
+                <Text style={styles.newContentLabel}>
+                  {t('foryou.newContent')}
+                </Text>
+              </Pressable>
             ) : null}
           </View>
           <View style={styles.headerRight}>
@@ -990,7 +1208,7 @@ export function ForYouSliceScreen() {
           ) : null}
           {showUpNext ? (
             <Text style={styles.upNextText}>
-              {t('foryou.upNext', { seconds: upNextSeconds })}
+              {t('foryou.upNext', { seconds: playback.upNextSeconds })}
             </Text>
           ) : null}
 
@@ -1037,7 +1255,7 @@ export function ForYouSliceScreen() {
             <Pressable
               accessibilityLabel={t('foryou.comments')}
               accessibilityRole="button"
-              onPress={() => setDetailTab('comments')}
+              onPress={() => dispatchIntent('open-comments')}
               style={({ pressed }) => [
                 styles.actionButton,
                 pressed && styles.pressed,
@@ -1060,7 +1278,7 @@ export function ForYouSliceScreen() {
             <Pressable
               accessibilityLabel={t('foryou.about')}
               accessibilityRole="button"
-              onPress={() => setDetailTab('about')}
+              onPress={() => dispatchIntent('open-about')}
               style={({ pressed }) => [
                 styles.actionButton,
                 pressed && styles.pressed,
@@ -1071,7 +1289,7 @@ export function ForYouSliceScreen() {
             <Pressable
               accessibilityLabel={t('foryou.moreActions')}
               accessibilityRole="button"
-              onPress={() => setIsOverflowVisible(true)}
+              onPress={() => dispatchIntent('open-overflow')}
               style={({ pressed }) => [
                 styles.actionButton,
                 pressed && styles.pressed,
@@ -1106,7 +1324,7 @@ export function ForYouSliceScreen() {
               accessibilityRole="button"
               accessibilityLabel={t('foryou.previous')}
               disabled={position === 0}
-              onPress={() => void selectPosition(position - 1)}
+              onPress={() => dispatchIntent('previous-item')}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 position === 0 && styles.disabledButton,
@@ -1122,7 +1340,7 @@ export function ForYouSliceScreen() {
                   ? t('foryou.pause')
                   : t('foryou.play')
               }
-              onPress={togglePlayback}
+              onPress={() => dispatchIntent('toggle-playback')}
               style={({ pressed }) => [
                 styles.playButton,
                 pressed && styles.pressed,
@@ -1148,7 +1366,7 @@ export function ForYouSliceScreen() {
               disabled={
                 session.cursor === null && position >= session.items.length - 1
               }
-              onPress={() => void selectPosition(position + 1)}
+              onPress={() => dispatchIntent('next-item')}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 session.cursor === null &&
@@ -1173,6 +1391,7 @@ export function ForYouSliceScreen() {
       ) : null}
       <ForYouOverflowSheet
         onClose={() => setIsOverflowVisible(false)}
+        onMuteSource={subject ? () => void muteCurrentSource() : undefined}
         onReport={() =>
           item && setReportTarget({ type: 'content', id: item.id })
         }
@@ -1243,11 +1462,13 @@ function createTranscriptExcerpt(text: string): string {
 function ForYouOverflowSheet({
   onClose,
   onHide,
+  onMuteSource,
   onReport,
   visible,
 }: {
   onClose: () => void;
   onHide: () => void;
+  onMuteSource?: () => void;
   onReport: () => void;
   visible: boolean;
 }) {
@@ -1296,6 +1517,27 @@ function ForYouOverflowSheet({
               </Text>
             </View>
           </Pressable>
+          {onMuteSource ? (
+            <Pressable
+              accessibilityHint={t('foryou.muteSourceDescription')}
+              accessibilityRole="button"
+              onPress={onMuteSource}
+              style={({ pressed }) => [
+                styles.hideAction,
+                pressed && styles.overflowPressed,
+              ]}
+            >
+              <EyeOff color={colors.ink} size={21} />
+              <View style={styles.hideActionCopy}>
+                <Text style={styles.hideActionTitle}>
+                  {t('foryou.muteSource')}
+                </Text>
+                <Text style={styles.hideActionDescription}>
+                  {t('foryou.muteSourceDescription')}
+                </Text>
+              </View>
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             onPress={onReport}

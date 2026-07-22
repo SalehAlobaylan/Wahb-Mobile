@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useSQLiteContext } from 'expo-sqlite';
 
 import {
   createServiceClients,
@@ -17,6 +18,7 @@ import {
   type ServiceClients,
 } from '@/core/api';
 import { resetInstallationId } from '@/core/identity/installation-id';
+import { clearLocalWahbData } from '@/core/database/reset-local-data';
 import { queryClient } from '@/core/query/query-client';
 import { setDiagnosticActor } from '@/core/diagnostics/sentry';
 
@@ -48,6 +50,7 @@ function isUserPartition(key: readonly unknown[], userId: string): boolean {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const db = useSQLiteContext();
   const [snapshot, setSnapshot] = useState<AuthSessionSnapshot>(
     sessionManager.snapshot(),
   );
@@ -102,21 +105,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [accept],
   );
   const logout = useCallback(async () => {
-    const previousUserId = sessionManager.snapshot().subject?.id;
     await sessionManager.logout(authenticatedClients.iam);
-    if (previousUserId) {
-      queryClient.removeQueries({
-        predicate: (query) => isUserPartition(query.queryKey, previousUserId),
-      });
-    }
+    // A cached article response includes account-specific flags. Clearing the
+    // in-memory cache is the simplest safe boundary before another account can
+    // render, while durable outbox rows remain partitioned by their owner.
+    queryClient.clear();
     sync();
   }, [sync]);
   const resetLocalData = useCallback(async () => {
+    // This is the single reset boundary. Keeping the SQLite wipe here prevents
+    // a future caller from clearing credentials/identity while retaining a
+    // prior account's snapshots, positions, outbox, or tombstones.
+    await clearLocalWahbData(db);
     await sessionManager.clearLocalCredentials();
     await resetInstallationId();
     queryClient.clear();
     sync();
-  }, [sync]);
+  }, [db, sync]);
   const requestAccountDeletion = useCallback(async (password: string) => {
     await authenticatedClients.iam.requestAccountDeletion(password);
   }, []);

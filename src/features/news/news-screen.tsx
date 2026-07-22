@@ -20,6 +20,8 @@ import type { NewsFeedResponse } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { getInstallationId } from '@/core/identity/installation-id';
+import { identityScope as toIdentityScope } from '@/core/identity/identity-scope';
+import { useOutbox } from '@/core/outbox/outbox-provider';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import { recordOpenedNewsStory } from '@/features/article-reader/article-reader-repository';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -46,6 +48,8 @@ export function NewsScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
   const { clients, subject } = useAuth();
+  const outbox = useOutbox();
+  const subjectId = subject?.id;
   const listRef = useRef<FlatList<NewsSlide>>(null);
   const slidesRef = useRef<NewsSlide[]>([]);
   const cursorRef = useRef<string | null>(null);
@@ -168,7 +172,7 @@ export function NewsScreen() {
         try {
           await recordOpenedNewsStory(
             db,
-            `anonymous:${identityQuery.data}`,
+            toIdentityScope(identityQuery.data, subjectId),
             storyId,
             leadId,
           );
@@ -178,9 +182,21 @@ export function NewsScreen() {
           captureException('news_history_write_failed', error);
         }
       }
+      try {
+        // CMS History deduplicates by lead content ID and resolves the actor
+        // from the authenticated token when present, otherwise the supplied
+        // installation. The local ledger remains the offline record.
+        await outbox.enqueue({
+          contentId: leadId,
+          type: 'view',
+          metadata: { surface: 'news', story_id: storyId },
+        });
+      } catch (error) {
+        captureException('news_history_enqueue_failed', error);
+      }
       router.push({ pathname: '/article/[id]', params: { id: leadId } });
     },
-    [db, identityQuery.data, router],
+    [db, identityQuery.data, outbox, router, subjectId],
   );
 
   if (identityQuery.isPending || firstPageQuery.isPending) {

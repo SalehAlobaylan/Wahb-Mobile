@@ -1,4 +1,3 @@
-import { router } from 'expo-router';
 import { useState } from 'react';
 import {
   Modal,
@@ -13,8 +12,8 @@ import { useTranslation } from 'react-i18next';
 
 import type { ModerationReason } from '@/core/api';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
-import { useAuth } from '@/features/auth/auth-provider';
 import { useOutbox } from '@/core/outbox/outbox-provider';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 
 const reasons: ModerationReason[] = [
   'harmful_inappropriate',
@@ -37,17 +36,12 @@ export function ReportSheet({
   onReported?: () => void;
 }) {
   const { t } = useTranslation();
-  const { subject } = useAuth();
   const outbox = useOutbox();
+  const reducedMotion = useReducedMotion();
   const [reason, setReason] = useState<ModerationReason | null>(null);
   const [detail, setDetail] = useState('');
   const [pending, setPending] = useState(false);
   const submit = async () => {
-    if (!subject) {
-      onClose();
-      router.push('/sign-in');
-      return;
-    }
     if (!target || !reason || (reason === 'other' && !detail.trim())) {
       return;
     }
@@ -70,7 +64,7 @@ export function ReportSheet({
   };
   return (
     <Modal
-      animationType="slide"
+      animationType={reducedMotion ? 'none' : 'slide'}
       onRequestClose={onClose}
       transparent
       visible={visible}

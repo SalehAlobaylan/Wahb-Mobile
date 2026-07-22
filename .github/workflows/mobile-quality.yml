@@ -27,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx expo prebuild --clean --no-install
+      - run: node scripts/verify-release-config.mjs
       - run: npx expo run:ios --configuration Debug --no-bundler
 
   android-cng-build:

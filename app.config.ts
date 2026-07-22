@@ -1,5 +1,13 @@
 import type { ExpoConfig } from 'expo/config';
 
+// This public EAS project identifier is intentionally absent until an owner
+// creates the real project. It is not a credential; EAS supplies it at build
+// time through EXPO_PUBLIC_EAS_PROJECT_ID instead of committing a placeholder.
+const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
+if (easProjectId && !/^[0-9a-f-]{36}$/i.test(easProjectId)) {
+  throw new Error('EXPO_PUBLIC_EAS_PROJECT_ID must be an EAS UUID.');
+}
+
 const config: ExpoConfig = {
   name: 'Wahb',
   slug: 'wahb-mobile',
@@ -8,6 +16,7 @@ const config: ExpoConfig = {
   updates: {
     checkAutomatically: 'ON_LOAD',
     fallbackToCacheTimeout: 0,
+    ...(easProjectId ? { url: `https://u.expo.dev/${easProjectId}` } : {}),
   },
   platforms: ['ios', 'android'],
   orientation: 'portrait',
@@ -15,10 +24,52 @@ const config: ExpoConfig = {
   scheme: 'wahb',
   userInterfaceStyle: 'automatic',
   ios: {
-    associatedDomains: ['applinks:wahb.salehspace.dev'],
     supportsTablet: false,
     bundleIdentifier: 'com.salehspace.wahb',
     buildNumber: '1',
+    config: {
+      // Wahb uses only platform-exempt transport encryption; no proprietary
+      // encryption implementation ships in the app.
+      usesNonExemptEncryption: false,
+    },
+    // Expo static Pods are not reliably represented in Apple's generated
+    // privacy report, so the app target carries the required-reason union.
+    privacyManifests: {
+      NSPrivacyTracking: false,
+      NSPrivacyTrackingDomains: [],
+      NSPrivacyAccessedAPITypes: [
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryFileTimestamp',
+          NSPrivacyAccessedAPITypeReasons: ['0A2A.1', '3B52.1', 'C617.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryDiskSpace',
+          NSPrivacyAccessedAPITypeReasons: ['E174.1', '85F4.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType: 'NSPrivacyAccessedAPICategoryUserDefaults',
+          NSPrivacyAccessedAPITypeReasons: ['CA92.1'],
+        },
+        {
+          NSPrivacyAccessedAPIType:
+            'NSPrivacyAccessedAPICategorySystemBootTime',
+          NSPrivacyAccessedAPITypeReasons: ['35F9.1'],
+        },
+      ],
+      NSPrivacyCollectedDataTypes: [
+        privacyData('NSPrivacyCollectedDataTypeEmailAddress'),
+        privacyData('NSPrivacyCollectedDataTypeUserID'),
+        privacyData('NSPrivacyCollectedDataTypeDeviceID'),
+        privacyData('NSPrivacyCollectedDataTypeProductInteraction', [
+          'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+          'NSPrivacyCollectedDataTypePurposeProductPersonalization',
+        ]),
+        privacyData('NSPrivacyCollectedDataTypeOtherUserContent'),
+        privacyData('NSPrivacyCollectedDataTypeCrashData'),
+        privacyData('NSPrivacyCollectedDataTypePerformanceData'),
+        privacyData('NSPrivacyCollectedDataTypeOtherDiagnosticData'),
+      ],
+    },
   },
   android: {
     package: 'com.salehspace.wahb',
@@ -105,6 +156,21 @@ const config: ExpoConfig = {
     typedRoutes: true,
     reactCompiler: true,
   },
+  ...(easProjectId ? { extra: { eas: { projectId: easProjectId } } } : {}),
 };
 
 export default config;
+
+function privacyData(
+  NSPrivacyCollectedDataType: string,
+  NSPrivacyCollectedDataTypePurposes = [
+    'NSPrivacyCollectedDataTypePurposeAppFunctionality',
+  ],
+) {
+  return {
+    NSPrivacyCollectedDataType,
+    NSPrivacyCollectedDataTypeLinked: true,
+    NSPrivacyCollectedDataTypeTracking: false,
+    NSPrivacyCollectedDataTypePurposes,
+  };
+}

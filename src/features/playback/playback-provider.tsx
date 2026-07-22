@@ -19,6 +19,7 @@ import {
 import {
   captureDiagnostic,
   captureException,
+  elapsedMilliseconds,
 } from '@/core/diagnostics/diagnostics';
 import {
   defaultExperiencePreferences,
@@ -46,10 +47,22 @@ import {
   remotePlaybackSourceResolver,
   retryDelayMs,
 } from './source-resolver';
+import { createUpNextCountdown } from './up-next-countdown';
 
 type StartPlaybackOptions = {
   positionSeconds?: number;
   autoplay?: boolean;
+  /** Internal failover continuation; callers should never infer this from URLs. */
+  candidateStartIndex?: number;
+};
+
+export type UpNextRequest = {
+  /** The caller must supply a frozen-session identity, never a feed cursor. */
+  sessionId: string;
+  currentItemId: string;
+  nextItem: PlaybackItem;
+  /** Returns false when the frozen session/item is no longer current. */
+  onAdvance(): Promise<boolean> | boolean;
 };
 
 function waitForRetry(delayMs: number): Promise<void> {
@@ -60,13 +73,19 @@ export type PlaybackController = PlaybackSnapshot & {
   videoPlayer: VideoPlayer;
   autoplayEnabled: boolean;
   rateDefaults: PlaybackRateDefaults;
+  upNextSeconds: number | null;
   start(item: PlaybackItem, options?: StartPlaybackOptions): Promise<void>;
   play(): void;
   pause(): void;
   seekBy(seconds: number): Promise<void>;
+  /** Applies to only the current item; never mutates class defaults. */
+  setTemporaryRate(rate: number): void;
+  /** @deprecated Use setTemporaryRate or setDefaultRate explicitly. */
   setRate(rate: number): void;
   setDefaultRate(rateClass: PlaybackRateClass, rate: number): void;
   setAutoplayEnabled(enabled: boolean): void;
+  scheduleUpNext(request: UpNextRequest): void;
+  cancelUpNext(): void;
   dismiss(): void;
 };
 
@@ -100,6 +119,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioPlayerRef = useRef(audioPlayer);
   const rateDefaultsRef = useRef(rateDefaults);
   const lastDiagnosticPhase = useRef<string | null>(null);
+  const startRequestedAt = useRef<number | null>(null);
+  const bufferingStartedAt = useRef<number | null>(null);
+  const fallbackStartedAt = useRef<number | null>(null);
+  const activeSourceIndex = useRef(0);
+  const handledRuntimeFailure = useRef<string | null>(null);
+  const upNextCountdown = useRef(createUpNextCountdown());
+  const upNextRequest = useRef<UpNextRequest | null>(null);
+  const upNextKey = useRef<string | null>(null);
+  const [upNextSeconds, setUpNextSeconds] = useState<number | null>(null);
 
   useEventListener(videoPlayer, 'playToEnd', () => {
     setSnapshot((current) =>
@@ -144,6 +172,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             ? 'playing'
             : 'paused'
           : 'idle';
+  const isBuffering =
+    snapshot.kind === 'video'
+      ? videoPlayer.status === 'loading'
+      : snapshot.kind === 'audio'
+        ? audioStatus.isBuffering
+        : false;
 
   useEffect(() => {
     if (phase === lastDiagnosticPhase.current) return;
@@ -152,23 +186,54 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       captureDiagnostic('playback_start', {
         playback_source: snapshot.sourceStage ?? snapshot.kind ?? 'none',
       });
-    } else if (phase === 'loading') {
-      captureDiagnostic('playback_buffering', {
-        playback_source: snapshot.kind ?? 'none',
-      });
+      if (startRequestedAt.current !== null) {
+        captureDiagnostic('playback_start_latency', {
+          duration_ms: elapsedMilliseconds(startRequestedAt.current),
+          playback_source: snapshot.sourceStage ?? snapshot.kind ?? 'none',
+        });
+        startRequestedAt.current = null;
+      }
     } else if (phase === 'failed') {
       captureDiagnostic('playback_fallback_exhausted', {
         playback_source: snapshot.kind ?? 'none',
       });
     }
   }, [phase, snapshot.kind, snapshot.sourceStage]);
+
+  useEffect(() => {
+    if (isBuffering) {
+      if (bufferingStartedAt.current === null) {
+        bufferingStartedAt.current = performance.now();
+        captureDiagnostic('playback_buffering', {
+          playback_source: snapshot.sourceStage ?? snapshot.kind ?? 'none',
+        });
+      }
+      return;
+    }
+    if (bufferingStartedAt.current !== null) {
+      captureDiagnostic('playback_buffer_duration', {
+        duration_ms: elapsedMilliseconds(bufferingStartedAt.current),
+        playback_source: snapshot.sourceStage ?? snapshot.kind ?? 'none',
+      });
+      bufferingStartedAt.current = null;
+    }
+  }, [isBuffering, snapshot.kind, snapshot.sourceStage]);
   const start = useCallback(
     async (item: PlaybackItem, options: StartPlaybackOptions = {}) => {
+      upNextCountdown.current.cancel();
+      upNextRequest.current = null;
+      upNextKey.current = null;
+      setUpNextSeconds(null);
       const request = ++operation.current;
+      startRequestedAt.current = performance.now();
       const kind = resolvePlaybackKind(item.playback);
       const rate = rateDefaultsRef.current[playbackRateClassFor(item)];
       const positionSeconds = options.positionSeconds ?? 0;
       const autoplay = options.autoplay ?? autoplayEnabled;
+      const candidateStartIndex = options.candidateStartIndex ?? 0;
+      if (candidateStartIndex === 0) {
+        fallbackStartedAt.current = null;
+      }
       const video = videoPlayerRef.current;
       const audio = audioPlayerRef.current;
 
@@ -192,16 +257,29 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         error: null,
       });
 
-      for (const source of remotePlaybackSourceResolver.resolve(
-        item.playback,
-      )) {
+      const sources = remotePlaybackSourceResolver.resolve(item.playback);
+      for (
+        let sourceIndex = candidateStartIndex;
+        sourceIndex < sources.length;
+        sourceIndex += 1
+      ) {
+        const source = sources[sourceIndex]!;
+        if (source.stage === 'fallback' && fallbackStartedAt.current === null) {
+          fallbackStartedAt.current = performance.now();
+          captureDiagnostic('playback_fallback_start', {
+            playback_source: source.stage,
+          });
+        }
         for (
           let attempt = 0;
           attempt < attemptsForSource(source);
           attempt += 1
         ) {
           try {
-            if (kind === 'video') {
+            const sourceKind = source.hasVideo ? 'video' : 'audio';
+            if (sourceKind === 'video') {
+              audio.pause();
+              audio.clearLockScreenControls();
               await video.replaceAsync({
                 uri: source.url,
                 metadata: {
@@ -223,6 +301,8 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
                 video.play();
               }
             } else {
+              video.pause();
+              video.showNowPlayingNotification = false;
               audio.replace({ uri: source.url, name: item.title });
               audio.shouldCorrectPitch = true;
               audio.setPlaybackRate(rate);
@@ -245,12 +325,25 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
               current.item?.id === item.id
                 ? {
                     ...current,
+                    kind: sourceKind,
                     phase: autoplay ? 'playing' : 'paused',
                     sourceStage: source.stage,
                     error: null,
                   }
                 : current,
             );
+            activeSourceIndex.current = sourceIndex;
+            handledRuntimeFailure.current = null;
+            if (
+              source.stage === 'fallback' &&
+              fallbackStartedAt.current !== null
+            ) {
+              captureDiagnostic('playback_fallback_duration', {
+                duration_ms: elapsedMilliseconds(fallbackStartedAt.current),
+                playback_source: source.stage,
+              });
+              fallbackStartedAt.current = null;
+            }
             return;
           } catch (error) {
             if (request !== operation.current) {
@@ -285,6 +378,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   const play = useCallback(() => {
+    upNextCountdown.current.cancel();
+    upNextRequest.current = null;
+    upNextKey.current = null;
+    setUpNextSeconds(null);
     setSnapshot((current) => ({ ...current, didReachEnd: false }));
     if (snapshot.kind === 'video') {
       videoPlayerRef.current.play();
@@ -293,7 +390,50 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     }
   }, [snapshot.kind]);
 
+  const failOverFromRuntimeError = useCallback(
+    (kind: 'audio' | 'video') => {
+      const item = snapshot.item;
+      if (!item || snapshot.kind !== kind) {
+        return;
+      }
+      const failureKey = `${operation.current}:${activeSourceIndex.current}`;
+      if (handledRuntimeFailure.current === failureKey) {
+        return;
+      }
+      handledRuntimeFailure.current = failureKey;
+      const positionSeconds =
+        kind === 'video'
+          ? videoPlayerRef.current.currentTime
+          : audioStatus.currentTime;
+      captureDiagnostic('playback_runtime_failover', {
+        playback_source: snapshot.sourceStage ?? kind,
+      });
+      void start(item, {
+        autoplay: true,
+        candidateStartIndex: activeSourceIndex.current + 1,
+        positionSeconds,
+      });
+    },
+    [audioStatus.currentTime, snapshot, start],
+  );
+
+  useEventListener(videoPlayer, 'statusChange', ({ status }) => {
+    if (status === 'error') {
+      failOverFromRuntimeError('video');
+    }
+  });
+
+  useEffect(() => {
+    if (audioStatus.error) {
+      failOverFromRuntimeError('audio');
+    }
+  }, [audioStatus.error, failOverFromRuntimeError]);
+
   const pause = useCallback(() => {
+    upNextCountdown.current.cancel();
+    upNextRequest.current = null;
+    upNextKey.current = null;
+    setUpNextSeconds(null);
     if (snapshot.kind === 'video') {
       videoPlayerRef.current.pause();
     } else if (snapshot.kind === 'audio') {
@@ -303,6 +443,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const seekBy = useCallback(
     async (seconds: number) => {
+      if (seconds < 0) {
+        upNextCountdown.current.cancel();
+        upNextRequest.current = null;
+        upNextKey.current = null;
+        setUpNextSeconds(null);
+      }
       if (snapshot.kind === 'video') {
         videoPlayerRef.current.seekBy(seconds);
       } else if (snapshot.kind === 'audio') {
@@ -314,7 +460,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     [audioStatus.currentTime, snapshot.kind],
   );
 
-  const setRate = useCallback(
+  const setTemporaryRate = useCallback(
     (rate: number) => {
       if (!isSupportedPlaybackRate(rate)) {
         return;
@@ -326,20 +472,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         audioPlayerRef.current.setPlaybackRate(rate);
       }
       setSnapshot((current) => ({ ...current, rate }));
-      if (snapshot.item) {
-        const rateClass = playbackRateClassFor(snapshot.item);
-        void writePlaybackRateDefault(
-          rateDefaultsRef.current,
-          rateClass,
-          rate,
-        ).then((defaults) => {
-          rateDefaultsRef.current = defaults;
-          setRateDefaults(defaults);
-        });
-      }
     },
-    [snapshot.item, snapshot.kind],
+    [snapshot.kind],
   );
+
+  const setRate = setTemporaryRate;
 
   const setDefaultRate = useCallback(
     (rateClass: PlaybackRateClass, rate: number) => {
@@ -355,10 +492,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         setRateDefaults(defaults);
       });
       if (snapshot.item && playbackRateClassFor(snapshot.item) === rateClass) {
-        setRate(rate);
+        setTemporaryRate(rate);
       }
     },
-    [setRate, snapshot.item],
+    [setTemporaryRate, snapshot.item],
   );
 
   const setAutoplayEnabled = useCallback((enabled: boolean) => {
@@ -375,14 +512,56 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       );
   }, []);
 
+  const cancelUpNext = useCallback(() => {
+    upNextCountdown.current.cancel();
+    upNextRequest.current = null;
+    upNextKey.current = null;
+    setUpNextSeconds(null);
+  }, []);
+
+  const scheduleUpNext = useCallback(
+    (request: UpNextRequest) => {
+      const key = `${request.sessionId}:${request.currentItemId}:${request.nextItem.id}`;
+      upNextRequest.current = request;
+      if (upNextKey.current === key && upNextCountdown.current.isScheduled()) {
+        return;
+      }
+      cancelUpNext();
+      upNextKey.current = key;
+      upNextRequest.current = request;
+      upNextCountdown.current.schedule(setUpNextSeconds, () => {
+        const activeRequest = upNextRequest.current;
+        if (!activeRequest || upNextKey.current !== key) return;
+        void Promise.resolve(activeRequest.onAdvance())
+          .then((didAdvance) =>
+            didAdvance
+              ? start(activeRequest.nextItem, { autoplay: true })
+              : undefined,
+          )
+          .catch((error) =>
+            captureException('feed_session_position_write_failed', error),
+          );
+      });
+    },
+    [cancelUpNext, start],
+  );
+
   const dismiss = useCallback(() => {
+    cancelUpNext();
     ++operation.current;
     videoPlayerRef.current.pause();
     videoPlayerRef.current.showNowPlayingNotification = false;
     audioPlayerRef.current.pause();
     audioPlayerRef.current.clearLockScreenControls();
     setSnapshot(createInitialPlaybackSnapshot());
-  }, []);
+  }, [cancelUpNext]);
+
+  useEffect(
+    () => () => {
+      upNextCountdown.current.cancel();
+    },
+    [],
+  );
 
   const controller = useMemo<PlaybackController>(() => {
     const playbackMetrics =
@@ -391,14 +570,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             currentTimeSeconds: videoTimeUpdate.currentTime,
             durationSeconds: videoPlayer.duration,
             bufferedPositionSeconds: videoTimeUpdate.bufferedPosition,
-            isBuffering: videoPlayer.status === 'loading',
+            isBuffering,
           }
         : snapshot.kind === 'audio'
           ? {
               currentTimeSeconds: audioStatus.currentTime,
               durationSeconds: audioStatus.duration,
               bufferedPositionSeconds: audioStatus.currentTime,
-              isBuffering: audioStatus.isBuffering,
+              isBuffering,
             }
           : {
               currentTimeSeconds: 0,
@@ -418,29 +597,38 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       videoPlayer,
       autoplayEnabled,
       rateDefaults,
+      upNextSeconds,
       start,
       play,
       pause,
       seekBy,
+      setTemporaryRate,
       setRate,
       setDefaultRate,
       setAutoplayEnabled,
+      scheduleUpNext,
+      cancelUpNext,
       dismiss,
     };
   }, [
     dismiss,
     audioStatus,
     autoplayEnabled,
+    cancelUpNext,
     pause,
     phase,
     play,
     seekBy,
+    setTemporaryRate,
     setRate,
     setDefaultRate,
     setAutoplayEnabled,
     rateDefaults,
+    scheduleUpNext,
     snapshot,
     start,
+    upNextSeconds,
+    isBuffering,
     videoTimeUpdate,
     videoPlayer,
   ]);

@@ -17,6 +17,10 @@ export const resources = {
         copy: 'حافظنا على تقدمك المحلي. حاول فتح هذه الصفحة مرة أخرى.',
         retry: 'إعادة المحاولة',
       },
+      outbox: {
+        rejectedTitle: 'تعذّر حفظ إجراء حديث',
+        rejectedCopy: 'لم يتغير المحتوى على وهب. حاول تنفيذ الإجراء مرة أخرى.',
+      },
       foryou: {
         feedLabel: 'من أجلك',
         loading: 'جارٍ إعداد جلستك…',
@@ -43,7 +47,10 @@ export const resources = {
         moreActions: 'المزيد من الإجراءات',
         closeOverflow: 'إغلاق الإجراءات',
         hideItem: 'إخفاء هذا العنصر',
-        hideItemDescription: 'سيُزال هذا العنصر من موجزك على هذا الجهاز.',
+        hideItemDescription:
+          'سيُزال هذا العنصر من الجلسات القادمة لهذا الحساب أو الجهاز.',
+        muteSource: 'لست مهتمًا بهذا المصدر',
+        muteSourceDescription: 'لن يظهر محتوى جديد من هذا المصدر في موجزك.',
         fit: 'ملاءمة',
         fill: 'ملء',
         closeDetails: 'إغلاق التفاصيل',
@@ -56,6 +63,8 @@ export const resources = {
         commentPost: 'نشر',
         deleteComment: 'حذف',
         commentsUnavailable: 'تعذّر تحميل التعليقات.',
+        loadMoreComments: 'تحميل مزيد من التعليقات',
+        endOfComments: 'هذه كل التعليقات.',
         noTranscript: 'لا يتوفر نص معتمد لهذا العنصر.',
         transcriptUnavailable: 'تعذّر تحميل النص.',
         member: 'عضو',
@@ -121,6 +130,10 @@ export const resources = {
         requestFailed: 'تعذّر إكمال هذا الطلب الآن. حاول مرة أخرى.',
         passwordMismatch: 'كلمتا المرور غير متطابقتين.',
         invalidLink: 'هذا الرابط غير صالح أو لم يعد متاحًا.',
+        recovery: {
+          'resend-verification': 'طلب رابط تحقق جديد',
+          'restart-password-reset': 'بدء إعادة تعيين كلمة المرور من جديد',
+        },
         'sign-in': {
           title: 'تسجيل الدخول',
           description: 'سجّل الدخول لتخصيص تجربة وهب الخاصة بك.',
@@ -213,6 +226,9 @@ export const resources = {
         interestsCopy:
           'تُرسل هذه التفضيلات إلى وهب لتحسين الترتيب. لا تُستخدم لتصفية المحتوى محليًا.',
         saveInterests: 'حفظ الاهتمامات',
+        mutedSources: 'المصادر المكتومة',
+        mutedSourcesCopy: 'لن تظهر هذه المصادر في «من أجلك» حتى تستعيدها.',
+        restoreSource: 'استعادة',
       },
       settings: {
         title: 'الإعدادات',
@@ -289,6 +305,11 @@ export const resources = {
         copy: 'We kept your local progress safe. Try reopening this surface.',
         retry: 'Retry',
       },
+      outbox: {
+        rejectedTitle: 'A recent action could not be saved',
+        rejectedCopy:
+          'Content on Wahb was not changed. Please try the action again.',
+      },
       foryou: {
         feedLabel: 'FOR YOU',
         loading: 'Preparing your session…',
@@ -316,7 +337,10 @@ export const resources = {
         closeOverflow: 'Close actions',
         hideItem: 'Hide this item',
         hideItemDescription:
-          'This item will be removed from your feed on this device.',
+          'This item will be removed from future sessions for this account or device.',
+        muteSource: 'Not interested in this source',
+        muteSourceDescription:
+          'New content from this source will no longer appear in your feed.',
         fit: 'Fit',
         fill: 'Fill',
         closeDetails: 'Close details',
@@ -329,6 +353,8 @@ export const resources = {
         commentPost: 'Post',
         deleteComment: 'Delete',
         commentsUnavailable: 'Comments could not load.',
+        loadMoreComments: 'Load more comments',
+        endOfComments: 'That’s all the comments.',
         noTranscript: 'No approved transcript is available for this item.',
         transcriptUnavailable: 'Transcript could not load.',
         member: 'Member',
@@ -396,6 +422,10 @@ export const resources = {
           'This request could not be completed right now. Try again.',
         passwordMismatch: 'Passwords do not match.',
         invalidLink: 'This link is invalid or no longer available.',
+        recovery: {
+          'resend-verification': 'Request a new verification link',
+          'restart-password-reset': 'Start password reset again',
+        },
         'sign-in': {
           title: 'Sign in',
           description: 'Sign in to personalize your Wahb experience.',
@@ -492,6 +522,10 @@ export const resources = {
         interestsCopy:
           'These preferences are sent to Wahb to improve ranking. They never filter content locally.',
         saveInterests: 'Save interests',
+        mutedSources: 'Muted sources',
+        mutedSourcesCopy:
+          'These sources stay out of For You until you restore them.',
+        restoreSource: 'Restore',
       },
       settings: {
         title: 'Settings',

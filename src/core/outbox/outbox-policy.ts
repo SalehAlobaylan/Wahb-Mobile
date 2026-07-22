@@ -16,6 +16,14 @@ export function isPermanentRejection(status: number | undefined): boolean {
   );
 }
 
+/** Only verified-account work can wait for a restored credential. */
+export function shouldBlockForAuthentication(
+  status: number | undefined,
+  identityScope: string,
+): boolean {
+  return status === 401 && identityScope.startsWith('user:');
+}
+
 export function decideRetry(
   attemptCount: number,
   now: Date,
@@ -44,9 +52,13 @@ export function isOutboxEventType(value: string): value is OutboxEventType {
   return [
     'like',
     'bookmark',
+    'hide',
     'share',
     'view',
     'progress',
+    'quick_skip',
+    'sampled',
+    'meaningful',
     'complete',
     'comment',
     'report',

@@ -15,6 +15,8 @@ export const playbackSourceSchema = z
     url: absoluteHttpUrl,
     type: playbackTypeSchema,
     fallbackUrl: absoluteHttpUrl.optional(),
+    fallbackType: playbackTypeSchema.optional(),
+    fallbackHasVideo: z.boolean().optional(),
     renditionMetadata: z.unknown().optional(),
     hasVideo: z.boolean(),
   })
@@ -28,6 +30,8 @@ export const forYouItemSchema = z
     playback_url: absoluteHttpUrl,
     playback_type: playbackTypeSchema,
     fallback_playback_url: absoluteHttpUrl.nullish(),
+    fallback_playback_type: playbackTypeSchema.optional(),
+    fallback_has_video: z.boolean().optional(),
     media_renditions: z.unknown().optional(),
     has_video: z.boolean(),
     thumbnail_url: absoluteHttpUrl.optional(),
@@ -57,6 +61,12 @@ export const forYouItemSchema = z
       ...(item.fallback_playback_url
         ? { fallbackUrl: item.fallback_playback_url }
         : {}),
+      ...(item.fallback_playback_type
+        ? { fallbackType: item.fallback_playback_type }
+        : {}),
+      ...(item.fallback_has_video !== undefined
+        ? { fallbackHasVideo: item.fallback_has_video }
+        : {}),
       ...(item.media_renditions
         ? { renditionMetadata: item.media_renditions }
         : {}),
@@ -72,6 +82,7 @@ export const forYouFeedResponseSchema = z
       .optional()
       .transform((value) => value ?? null),
     items: z.array(z.unknown()),
+    caught_up: z.boolean().optional().default(false),
   })
   .passthrough()
   .transform(({ items, ...response }) => {
@@ -93,6 +104,7 @@ export const forYouSessionResponseSchema = z
   .object({
     session_id: z.uuid(),
     expires_at: z.string().datetime(),
+    caught_up: z.boolean().optional().default(false),
   })
   .passthrough()
   .transform((response) => {
@@ -103,6 +115,11 @@ export const forYouSessionResponseSchema = z
       expiresAt: response.expires_at,
     };
   });
+
+export const forYouSessionFreshnessResponseSchema = z
+  .object({ has_new_content: z.boolean() })
+  .passthrough()
+  .transform((response) => ({ hasNewContent: response.has_new_content }));
 
 const newsStoryMemberSchema = z
   .object({
@@ -225,9 +242,13 @@ export const messageResponseSchema = z
 export const interactionTypeSchema = z.enum([
   'like',
   'bookmark',
+  'hide',
   'share',
   'view',
   'progress',
+  'quick_skip',
+  'sampled',
+  'meaningful',
   'complete',
   'comment',
 ]);
@@ -337,6 +358,22 @@ export const preferencesResponseSchema = z
     declared: z.array(topicSchema),
     learned: z.array(topicSchema),
     muted: z.array(topicSchema),
+    muted_sources: z
+      .array(
+        z.object({
+          source_key: z.string().min(1),
+          state: z.literal('muted'),
+        }),
+      )
+      .optional()
+      .default([]),
+  })
+  .passthrough();
+
+export const sourcePreferenceResponseSchema = z
+  .object({
+    source_key: z.string().min(1),
+    state: z.enum(['muted', 'active']),
   })
   .passthrough();
 
@@ -400,6 +437,9 @@ export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
 export type ForYouItem = z.infer<typeof forYouItemSchema>;
 export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
 export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
+export type ForYouSessionFreshnessResponse = z.infer<
+  typeof forYouSessionFreshnessResponseSchema
+>;
 export type NewsFeedResponse = z.infer<typeof newsFeedResponseSchema>;
 export type ArticleContent = z.infer<typeof articleContentResponseSchema>;
 export type AuthTokenPair = z.infer<typeof authTokenPairSchema>;

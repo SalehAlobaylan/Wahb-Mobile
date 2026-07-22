@@ -27,7 +27,7 @@ export type PlaybackSnapshot = {
   bufferedPositionSeconds: number;
   isBuffering: boolean;
   didReachEnd: boolean;
-  sourceStage: 'primary' | 'fallback' | null;
+  sourceStage: 'local' | 'primary' | 'fallback' | null;
   error: 'source_load_failed' | null;
 };
 

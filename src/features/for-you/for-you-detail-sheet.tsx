@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { hapticLightImpact, hapticSelection } from '@/core/haptics/feedback';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -22,6 +22,9 @@ import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { ReportSheet } from '@/features/moderation/report-sheet';
+import { useReducedMotion } from '@/core/ui/use-reduced-motion';
+
+import { detailSheetIntentForPan } from './detail-sheet-intents';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
 
@@ -44,6 +47,7 @@ export function ForYouDetailSheet({
   const router = useRouter();
   const { clients, subject } = useAuth();
   const outbox = useOutbox();
+  const reducedMotion = useReducedMotion();
   const { height: windowHeight } = useWindowDimensions();
   const [tab, setTab] = useState<DetailTab>(initialTab);
   const [expanded, setExpanded] = useState(initialTab === 'transcript');
@@ -69,12 +73,13 @@ export function ForYouDetailSheet({
           Math.abs(gesture.dy) > 8 &&
           Math.abs(gesture.dy) > Math.abs(gesture.dx),
         onPanResponderRelease: (_, gesture) => {
-          if (gesture.dy > 120) {
+          const intent = detailSheetIntentForPan(gesture.dy, expanded);
+          if (intent === 'close') {
             onClose();
-          } else if (gesture.dy < -50 && !expanded) {
+          } else if (intent === 'expand') {
             setExpanded(true);
             hapticLightImpact();
-          } else if (gesture.dy > 50 && expanded) {
+          } else if (intent === 'collapse') {
             setExpanded(false);
             hapticLightImpact();
           }
@@ -82,14 +87,18 @@ export function ForYouDetailSheet({
       }),
     [expanded, onClose],
   );
-  const commentsQuery = useQuery({
+  const commentsQuery = useInfiniteQuery({
     queryKey: ['content-comments', item.id, installationId, subject?.id],
-    queryFn: () =>
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam, signal }) =>
       clients.cms.getComments({
         contentId: item.id,
         installationId,
+        ...(pageParam ? { cursor: pageParam } : {}),
         limit: 20,
+        signal,
       }),
+    getNextPageParam: (page) => page.cursor,
     enabled: visible && tab === 'comments',
   });
   const submitComment = async () => {
@@ -125,11 +134,14 @@ export function ForYouDetailSheet({
       });
     }
   };
-  const visibleComments = (commentsQuery.data?.items ?? []).filter(
-    (comment) =>
-      !hiddenCommentIds.has(comment.id) &&
-      !(comment.author_id && blockedAuthorIds.has(comment.author_id)),
-  );
+  const visibleComments =
+    commentsQuery.data?.pages
+      .flatMap((page) => page.items)
+      .filter(
+        (comment) =>
+          !hiddenCommentIds.has(comment.id) &&
+          !(comment.author_id && blockedAuthorIds.has(comment.author_id)),
+      ) ?? [];
   const transcriptQuery = useQuery({
     queryKey: ['transcript', item.transcript_id],
     queryFn: () => clients.cms.getTranscript(item.transcript_id!),
@@ -142,7 +154,7 @@ export function ForYouDetailSheet({
 
   return (
     <Modal
-      animationType="slide"
+      animationType={reducedMotion ? 'none' : 'slide'}
       onRequestClose={onClose}
       transparent
       visible={visible}
@@ -202,13 +214,16 @@ export function ForYouDetailSheet({
             {tab === 'comments' ? (
               <CommentsPanel
                 isError={commentsQuery.isError}
-                isLoading={commentsQuery.isLoading}
+                isLoading={commentsQuery.isPending}
+                isLoadingMore={commentsQuery.isFetchingNextPage}
+                hasMore={commentsQuery.hasNextPage}
                 canComment={Boolean(subject)}
                 draft={commentDraft}
                 onChangeDraft={setCommentDraft}
                 onBlock={blockAuthor}
                 onDelete={deleteComment}
                 onReport={(commentId) => setReportCommentId(commentId)}
+                onLoadMore={() => void commentsQuery.fetchNextPage()}
                 onRetry={() => void commentsQuery.refetch()}
                 onSubmit={() => void submitComment()}
                 comments={visibleComments}
@@ -279,12 +294,15 @@ function CommentsPanel({
   comments,
   isError,
   isLoading,
+  isLoadingMore,
+  hasMore,
   canComment,
   draft,
   onChangeDraft,
   onBlock,
   onDelete,
   onReport,
+  onLoadMore,
   onRetry,
   onSubmit,
 }: {
@@ -297,12 +315,15 @@ function CommentsPanel({
   }[];
   isError: boolean;
   isLoading: boolean;
+  isLoadingMore: boolean;
+  hasMore: boolean;
   canComment: boolean;
   draft: string;
   onChangeDraft: (value: string) => void;
   onBlock: (authorId: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onReport: (id: string) => void;
+  onLoadMore: () => void;
   onRetry: () => void;
   onSubmit: () => void;
 }) {
@@ -390,6 +411,26 @@ function CommentsPanel({
           <Text style={styles.commentText}>{comment.text}</Text>
         </View>
       ))}
+      {hasMore ? (
+        <Pressable
+          accessibilityRole="button"
+          disabled={isLoadingMore}
+          onPress={onLoadMore}
+          style={styles.loadMore}
+        >
+          {isLoadingMore ? (
+            <ActivityIndicator color={colors.pressRed} />
+          ) : (
+            <Text style={styles.loadMoreText}>
+              {t('foryou.loadMoreComments')}
+            </Text>
+          )}
+        </Pressable>
+      ) : comments.length > 0 ? (
+        <Text accessibilityLiveRegion="polite" style={styles.endOfComments}>
+          {t('foryou.endOfComments')}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -477,7 +518,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     overflow: 'hidden',
   },
-  handleRegion: { alignItems: 'center', minHeight: 36, paddingTop: spacing.sm },
+  handleRegion: { alignItems: 'center', minHeight: 44, paddingTop: spacing.sm },
   handle: {
     backgroundColor: colors.ink,
     borderRadius: radii.round,
@@ -573,6 +614,20 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.body,
     fontSize: 15,
     lineHeight: 22,
+  },
+  loadMore: {
+    alignItems: 'center',
+    borderColor: colors.ink,
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  loadMoreText: { color: colors.ink, fontFamily: fontFamilies.bodyBold },
+  endOfComments: {
+    color: colors.inkMuted,
+    fontFamily: fontFamilies.body,
+    textAlign: 'center',
   },
   emptyText: {
     color: colors.inkMuted,

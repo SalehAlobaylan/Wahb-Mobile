@@ -160,6 +160,81 @@ export const migrations: readonly Migration[] = [
       );
     `,
   },
+  {
+    // A stronger playback classification upgrades the earlier one without
+    // replaying the same classification after a foreground/background cycle.
+    version: 10,
+    statements: `
+      ALTER TABLE feed_session_items
+        ADD COLUMN consumption_classification TEXT;
+    `,
+  },
+  {
+    // Legacy article rows were keyed only by content and may contain a prior
+    // account's bookmark flag. Leave them unreadable and use scoped v2 tables.
+    version: 11,
+    statements: `
+      CREATE TABLE IF NOT EXISTS article_snapshots_v2 (
+        identity_scope TEXT NOT NULL,
+        content_id TEXT NOT NULL,
+        snapshot_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL,
+        PRIMARY KEY (identity_scope, content_id)
+      );
+      CREATE TABLE IF NOT EXISTS reader_positions_v2 (
+        identity_scope TEXT NOT NULL,
+        content_id TEXT NOT NULL,
+        offset_y REAL NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (identity_scope, content_id)
+      );
+    `,
+  },
+  {
+    // An app can terminate after claiming an outbox row. The lease lets the
+    // active identity recover it without replaying another account's events.
+    version: 12,
+    statements: `
+      ALTER TABLE event_outbox ADD COLUMN claimed_at TEXT;
+      CREATE INDEX IF NOT EXISTS idx_event_outbox_claim_recovery
+        ON event_outbox (identity_scope, status, claimed_at);
+    `,
+  },
+  {
+    // SQLite cannot alter a CHECK constraint in place. Rebuild the outbox so
+    // account-scoped work can pause for renewed credentials instead of being
+    // rejected after an otherwise recoverable 401.
+    version: 13,
+    statements: `
+      CREATE TABLE event_outbox_v2 (
+        id TEXT PRIMARY KEY NOT NULL,
+        identity_scope TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        idempotency_key TEXT UNIQUE NOT NULL,
+        sequence INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'in_flight', 'failed', 'auth_blocked')),
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT,
+        claimed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO event_outbox_v2
+        (id, identity_scope, event_type, payload_json, idempotency_key, sequence,
+         status, attempt_count, next_attempt_at, claimed_at, created_at, updated_at)
+      SELECT id, identity_scope, event_type, payload_json, idempotency_key, sequence,
+             status, attempt_count, next_attempt_at, claimed_at, created_at, updated_at
+        FROM event_outbox;
+      DROP TABLE event_outbox;
+      ALTER TABLE event_outbox_v2 RENAME TO event_outbox;
+      CREATE INDEX IF NOT EXISTS idx_event_outbox_delivery
+        ON event_outbox(status, next_attempt_at, sequence);
+      CREATE INDEX IF NOT EXISTS idx_event_outbox_claim_recovery
+        ON event_outbox(identity_scope, status, claimed_at);
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

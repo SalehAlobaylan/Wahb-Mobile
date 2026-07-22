@@ -1,5 +1,6 @@
 import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
+import type { ConsumptionClassification } from '@/features/playback/consumption-classifier';
 
 import type { ForYouFeedResponse, ForYouItem } from '@/core/api';
 import { tombstonedContentIds } from '@/core/database/tombstones';
@@ -373,9 +374,9 @@ export async function materializeForYouSession(
 }
 
 /**
- * Hide is intentionally local until CMS publishes its installation/account hide
- * contract. The frozen session is compacted in the same transaction so the
- * removed item cannot return after a process restart.
+ * Hide takes effect locally before the durable outbox interaction reaches CMS.
+ * The frozen session is compacted in the same transaction so the removed item
+ * cannot return after a process restart or while the device is offline.
  */
 export async function hideForYouItem(
   db: SQLiteDatabase,
@@ -558,6 +559,78 @@ export function recordForYouCompletion(
       furthest_position_seconds: Math.floor(furthestPositionSeconds),
     },
   );
+}
+
+const consumptionStrength: Record<ConsumptionClassification, number> = {
+  quick_skip: 1,
+  sampled: 2,
+  meaningful: 3,
+  completed: 4,
+};
+
+/** Record each stronger consumption class at most once for a frozen item. */
+export async function recordForYouConsumption(
+  db: SQLiteDatabase,
+  sessionId: string,
+  position: number,
+  identityScope: string,
+  classification: ConsumptionClassification,
+  actualPlayedSeconds: number,
+  furthestPositionSeconds: number,
+  now = new Date(),
+): Promise<boolean> {
+  let recorded = false;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    const item = await transaction.getFirstAsync<{
+      content_id: string;
+      consumption_classification: ConsumptionClassification | null;
+    }>(
+      `SELECT content_id, consumption_classification
+         FROM feed_session_items
+        WHERE session_id = ? AND position = ?`,
+      sessionId,
+      position,
+    );
+    if (
+      !item ||
+      (item.consumption_classification &&
+        consumptionStrength[item.consumption_classification] >=
+          consumptionStrength[classification])
+    ) {
+      return;
+    }
+    await enqueueInteractionWithIds(
+      transaction,
+      identityScope,
+      {
+        contentId: item.content_id,
+        type: classification === 'completed' ? 'complete' : classification,
+        metadata: {
+          surface: 'foryou',
+          consumption_contract_version: 1,
+          actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
+          furthest_position_seconds: Math.max(
+            0,
+            Math.floor(furthestPositionSeconds),
+          ),
+          consumption_classification: classification,
+        },
+      },
+      Crypto.randomUUID(),
+      Crypto.randomUUID(),
+      now,
+    );
+    await transaction.runAsync(
+      `UPDATE feed_session_items
+          SET consumption_classification = ?
+        WHERE session_id = ? AND position = ?`,
+      classification,
+      sessionId,
+      position,
+    );
+    recorded = true;
+  });
+  return recorded;
 }
 
 /** Queue a resumable checkpoint at most once per 30 seconds of new progress. */

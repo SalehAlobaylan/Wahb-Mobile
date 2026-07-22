@@ -3,9 +3,13 @@ import { HttpError as CmsHttpError } from '@/core/api';
 
 import {
   acknowledgeOutboxEvent,
+  blockOutboxEventForAuth,
   claimNextOutboxEvent,
+  resumeAuthBlockedOutbox,
   retryOrRejectOutboxEvent,
 } from './outbox-repository';
+import { shouldBlockForAuthentication } from './outbox-policy';
+import type { ClaimedOutboxEvent } from './outbox-repository';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 /** Delivers oldest-first and stops at the first deferred failure. */
@@ -14,9 +18,18 @@ export async function flushOutbox(
   cms: CmsApi,
   identityScope: string,
   sessionId: string,
-  options?: { onContentTombstone?: (contentId: string) => Promise<void> },
+  options?: {
+    onContentTombstone?: (contentId: string) => Promise<void>;
+    onPermanentRejection?: (
+      event: ClaimedOutboxEvent,
+      status: number | undefined,
+    ) => Promise<void>;
+  },
 ): Promise<number> {
   let delivered = 0;
+  if (identityScope.startsWith('user:')) {
+    await resumeAuthBlockedOutbox(db, identityScope);
+  }
   for (;;) {
     const event = await claimNextOutboxEvent(db, identityScope);
     if (!event) {
@@ -29,6 +42,7 @@ export async function flushOutbox(
           targetId: event.payload.targetId,
           reason: event.payload.reason,
           ...(event.payload.detail ? { detail: event.payload.detail } : {}),
+          installationId: sessionId,
           idempotencyKey: event.idempotencyKey,
         });
       } else if (event.payload.operation === 'delete') {
@@ -59,7 +73,14 @@ export async function flushOutbox(
     } catch (error) {
       const status =
         error instanceof CmsHttpError ? error.context.status : undefined;
-      await retryOrRejectOutboxEvent(db, event, status);
+      if (shouldBlockForAuthentication(status, identityScope)) {
+        await blockOutboxEventForAuth(db, event.id);
+        return delivered;
+      }
+      const decision = await retryOrRejectOutboxEvent(db, event, status);
+      if (decision.kind === 'reject') {
+        await options?.onPermanentRejection?.(event, status);
+      }
       if (status === 404 && event.payload.type !== 'report') {
         await options?.onContentTombstone?.(event.payload.contentId);
       }

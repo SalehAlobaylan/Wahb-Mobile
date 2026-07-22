@@ -32,9 +32,10 @@ function normalize(value: unknown): LanguagePreferences {
   }
   const candidate = value as Partial<LanguagePreferences>;
   return {
-    uiLanguage: candidate.uiLanguage === 'ar' || candidate.uiLanguage === 'en'
-      ? candidate.uiLanguage
-      : fallback.uiLanguage,
+    uiLanguage:
+      candidate.uiLanguage === 'ar' || candidate.uiLanguage === 'en'
+        ? candidate.uiLanguage
+        : fallback.uiLanguage,
     contentLanguage:
       candidate.contentLanguage === 'ar' ||
       candidate.contentLanguage === 'en' ||
