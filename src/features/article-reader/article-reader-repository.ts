@@ -62,6 +62,22 @@ export async function saveArticleSnapshot(
   );
 }
 
+export async function deleteArticleSnapshot(
+  db: SQLiteDatabase,
+  contentId: string,
+): Promise<void> {
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    await transaction.runAsync(
+      'DELETE FROM article_snapshots WHERE content_id = ?',
+      contentId,
+    );
+    await transaction.runAsync(
+      'DELETE FROM reader_positions WHERE content_id = ?',
+      contentId,
+    );
+  });
+}
+
 export async function loadReaderPosition(
   db: SQLiteDatabase,
   contentId: string,

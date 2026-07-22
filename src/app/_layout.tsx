@@ -6,15 +6,18 @@ import {
 import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
 import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
 import { QueryClientProvider } from '@tanstack/react-query';
+import Constants from 'expo-constants';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { initializeDatabase } from '@/core/database/migrations';
 import { initializeDiagnostics } from '@/core/diagnostics/sentry';
+import { captureDiagnostic } from '@/core/diagnostics/diagnostics';
 import { setHapticsEnabled } from '@/core/haptics/feedback';
 import '@/core/i18n';
 import { bootstrapLanguagePreferences } from '@/features/settings/language-preferences';
@@ -56,6 +59,13 @@ export default function RootLayout() {
         applyThemePreference(preferences.theme);
       }),
     ]).finally(() => setLanguageReady(true));
+  }, []);
+
+  useEffect(() => {
+    captureDiagnostic('app_start', {
+      build: Constants.expoConfig?.ios?.buildNumber ?? '1',
+      platform: Platform.OS,
+    });
   }, []);
 
   useEffect(() => {

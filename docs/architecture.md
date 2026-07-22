@@ -253,8 +253,44 @@ Expo SDK 57 establishes the minimum supported platforms: iOS 16.4 and Android
 `@sentry/react-native` is present through Expo Continuous Native Generation and
 is enabled only when `EXPO_PUBLIC_SENTRY_DSN` is configured. A DSN is a public
 client identifier, not an authentication secret. The runtime disables replay,
-performance tracing, breadcrumbs, screenshots, and view hierarchy capture;
-its `beforeSend` scrubber retains only named, allow-listed diagnostic context.
+breadcrumbs, screenshots, view hierarchy capture, failed-request capture, and
+session tracking. Performance tracing is production-sampled at 2%; every kept
+transaction is reduced to the fixed `wahb.mobile` name with no spans, request,
+or contexts. Its error scrubber retains only named, allow-listed diagnostic
+context. Route diagnostics remove query strings and dynamic IDs. Authenticated
+correlation is a truncated SHA-256 hash of the IAM user ID; raw IDs, emails,
+content, credentials, URLs, transcript/article text, and comments never leave
+the app through diagnostics.
+
+The only lifecycle measurements are app start, frozen-session recovery,
+playback start/buffer/fallback, and outbox health. Ranking and product behavior
+remain CMS-owned; the native client does not send behavioral analytics to a
+third party.
+
+## M10 offline and release gates
+
+An expired For You session may be reopened only as a labelled offline snapshot.
+It has no cursor, cannot append or reshuffle, and remote media says **Connect
+to play** rather than presenting player cache as a download. With no readable
+snapshot, cold launch shows a distinct offline screen. A confirmed CMS `404`
+from a durable interaction becomes a local tombstone, so deleted or moderated
+content cannot reappear through a cached For You session; a `404` article also
+removes its local reader snapshot.
+
+`eas.json` defines isolated `development`, `preview`, and `production`
+channels. Runtime fingerprinting prevents an OTA update from crossing a native
+configuration boundary. Only JavaScript, styles, translations, and assets may
+ship by OTA; any native module, permission, background mode, or app-config
+change requires a new store build. The EAS project URL/ID is intentionally not
+invented in source: add it only when the production EAS project is created.
+
+CI performs JavaScript validation plus a clean CNG prebuild and unsigned iOS
+Simulator build. Before release, run the documented physical-iPhone matrix:
+VoiceOver, largest Dynamic Type, reduced motion, Arabic RTL, Wi-Fi/cellular
+changes, Low Power Mode, background/lock screen, Bluetooth route changes,
+interruptions, low-memory recovery, and cold offline launch. Simulator and a
+Personal Team iPhone development build are the supported pre-TestFlight path;
+the latter requires periodic reinstall when its provisioning expires.
 Source-map upload credentials, if introduced, are build-time secrets and must
 never be committed or exposed through `EXPO_PUBLIC_*` variables. Configure
 `SENTRY_ORG`, `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN` only in the

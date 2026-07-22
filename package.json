@@ -68,6 +68,7 @@
     "test:watch": "jest --watch",
     "doctor": "npx expo-doctor",
     "prebuild:clean": "expo prebuild --clean",
+    "prebuild:verify": "expo prebuild --clean --no-install",
     "validate": "npm run typecheck && npm run lint && npm run format:check && npm test"
   },
   "engines": {

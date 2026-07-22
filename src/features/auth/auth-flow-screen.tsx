@@ -45,6 +45,7 @@ function PasswordField({
   const { t } = useTranslation();
   return (
     <TextInput
+      testID="auth-password"
       accessibilityLabel={t('auth.password')}
       autoCapitalize="none"
       autoComplete="password"
@@ -151,6 +152,7 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
 
   const emailInput = (
     <TextInput
+      testID="auth-email"
       accessibilityLabel={t('auth.email')}
       autoCapitalize="none"
       autoComplete="email"
@@ -245,6 +247,7 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
             </Text>
           ) : null}
           <Pressable
+            testID="auth-submit"
             accessibilityRole="button"
             disabled={
               isSubmitting || (flow === 'check-email' && resendSeconds > 0)

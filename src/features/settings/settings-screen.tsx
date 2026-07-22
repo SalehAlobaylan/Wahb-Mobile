@@ -106,12 +106,14 @@ export function SettingsScreen() {
 
         <Section title={t('settings.uiLanguage')}>
           <Choice
+            testID="settings-ui-language-ar"
             value="ar"
             selected={language.uiLanguage}
             label={t('settings.arabic')}
             onPress={() => updateLanguage({ uiLanguage: 'ar' })}
           />
           <Choice
+            testID="settings-ui-language-en"
             value="en"
             selected={language.uiLanguage}
             label={t('settings.english')}
@@ -259,11 +261,13 @@ function Section({ children, title }: { children: ReactNode; title: string }) {
   );
 }
 function Choice({
+  testID,
   value,
   selected,
   label,
   onPress,
 }: {
+  testID?: string;
   value: string;
   selected: string;
   label: string;
@@ -272,6 +276,7 @@ function Choice({
   const active = value === selected;
   return (
     <Pressable
+      testID={testID}
       accessibilityRole="radio"
       accessibilityState={{ selected: active }}
       onPress={onPress}

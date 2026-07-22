@@ -4,6 +4,11 @@ const config: ExpoConfig = {
   name: 'Wahb',
   slug: 'wahb-mobile',
   version: '0.1.0',
+  runtimeVersion: { policy: 'fingerprint' },
+  updates: {
+    checkAutomatically: 'ON_LOAD',
+    fallbackToCacheTimeout: 0,
+  },
   platforms: ['ios', 'android'],
   orientation: 'portrait',
   icon: './assets/brand/wahb-logo-circle-red.png',

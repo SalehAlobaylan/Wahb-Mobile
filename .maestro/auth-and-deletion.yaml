@@ -1,0 +1,26 @@
+appId: com.salehspace.wahb
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: 'account-entry'
+- tapOn: 'Sign in'
+- assertVisible: 'Sign in'
+- tapOn:
+    id: 'auth-email'
+- inputText: ${MAESTRO_EMAIL}
+- tapOn:
+    id: 'auth-password'
+- inputText: ${MAESTRO_PASSWORD}
+- tapOn:
+    id: 'auth-submit'
+- assertVisible: 'FOR YOU'
+- tapOn:
+    id: 'account-entry'
+- tapOn:
+    id: 'account-delete'
+- assertVisible: 'Delete account'
+# The runner aborts here: it verifies the destructive-account path without
+# submitting it. Credentials are injected from runner secrets, never source.
+- takeScreenshot: 'delete-account-confirmation'
+- takeScreenshot: 'auth-entry'

@@ -2,7 +2,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 
-import { captureException } from '@/core/diagnostics/diagnostics';
+import {
+  captureDiagnostic,
+  captureException,
+} from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
 import { useAuth } from '@/features/auth/auth-provider';
 
@@ -10,6 +13,7 @@ import {
   loadFreshForYouSession,
   appendForYouSessionPage,
   hideForYouItem,
+  loadRecoverableForYouSession,
   materializeForYouSession,
   type FrozenForYouSession,
 } from './for-you-session-repository';
@@ -35,7 +39,9 @@ export function useForYouSession() {
 
   const installationId = identityQuery.data;
   const identityScope = installationId
-    ? (subject ? `user:${subject.id}` : `anonymous:${installationId}`)
+    ? subject
+      ? `user:${subject.id}`
+      : `anonymous:${installationId}`
     : undefined;
   const sessionQuery = useQuery<FrozenForYouSession>({
     queryKey: ['foryou-session', identityScope],
@@ -47,21 +53,38 @@ export function useForYouSession() {
 
       const restored = await loadFreshForYouSession(db, identityScope);
       if (restored) {
+        captureDiagnostic('foryou_session_health', {
+          event_type: 'fresh_restore',
+        });
         return restored;
       }
 
-      const page = await clients.cms.createForYouSession({
-        installationId,
-        limit: 10,
-        signal,
-      });
-      return materializeForYouSession(
-        db,
-        identityScope,
-        page,
-        page.serverSessionId,
-        page.expiresAt,
-      );
+      try {
+        const page = await clients.cms.createForYouSession({
+          installationId,
+          limit: 10,
+          signal,
+        });
+        return materializeForYouSession(
+          db,
+          identityScope,
+          page,
+          page.serverSessionId,
+          page.expiresAt,
+        );
+      } catch (error) {
+        const recovery = await loadRecoverableForYouSession(db, identityScope);
+        if (recovery) {
+          const createdAtMs = new Date(recovery.createdAt).getTime();
+          captureException('foryou_session_offline_restore', error, {
+            ...(Number.isFinite(createdAtMs)
+              ? { snapshot_age_ms: Math.max(0, Date.now() - createdAtMs) }
+              : {}),
+          });
+          return recovery;
+        }
+        throw error;
+      }
     },
   });
 
@@ -70,7 +93,11 @@ export function useForYouSession() {
       return false;
     }
     const current = sessionQuery.data;
-    if (!current?.cursor || !current.serverSessionId) {
+    if (
+      current?.isOfflineSnapshot ||
+      !current?.cursor ||
+      !current.serverSessionId
+    ) {
       return false;
     }
     if (paginationInFlight.current) {
@@ -106,7 +133,14 @@ export function useForYouSession() {
     } finally {
       paginationInFlight.current = false;
     }
-  }, [clients.cms, db, identityScope, installationId, queryClient, sessionQuery.data]);
+  }, [
+    clients.cms,
+    db,
+    identityScope,
+    installationId,
+    queryClient,
+    sessionQuery.data,
+  ]);
 
   const refreshSession = useCallback(async () => {
     if (!installationId) {
@@ -114,7 +148,10 @@ export function useForYouSession() {
     }
     // Materialization expires the prior session only after this request has
     // succeeded, so a failed refresh leaves the current frozen session intact.
-    const page = await clients.cms.createForYouSession({ installationId, limit: 10 });
+    const page = await clients.cms.createForYouSession({
+      installationId,
+      limit: 10,
+    });
     const updated = await materializeForYouSession(
       db,
       identityScope!,

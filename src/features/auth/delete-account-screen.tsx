@@ -80,6 +80,7 @@ export function DeleteAccountScreen() {
           <View style={styles.field}>
             <Text style={styles.label}>{t('auth.password')}</Text>
             <TextInput
+              testID="delete-account-password"
               accessibilityLabel={t('account.deletePassword')}
               autoCapitalize="none"
               autoCorrect={false}

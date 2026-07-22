@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import type { ForYouFeedResponse, ForYouItem } from '@/core/api';
+import { tombstonedContentIds } from '@/core/database/tombstones';
 import { enqueueInteractionWithIds } from '@/core/outbox/outbox-repository';
 
 import { createSessionExpiry, isSessionFresh } from './feed-session-policy';
@@ -29,11 +30,71 @@ export type FrozenForYouSession = {
   activePosition: number;
   createdAt: string;
   expiresAt: string;
+  /** A local snapshot shown only when a fresh CMS session cannot be reached. */
+  isOfflineSnapshot?: boolean;
   items: {
     item: ForYouItem;
     playbackPositionMs: number;
   }[];
 };
+
+/**
+ * Returns the latest readable snapshot even after its CMS session has expired.
+ * This is intentionally a display-only recovery surface: callers must not
+ * append live pages or present it as newly ranked inventory.
+ */
+export async function loadRecoverableForYouSession(
+  db: SQLiteDatabase,
+  identityScope: string,
+): Promise<FrozenForYouSession | null> {
+  const session = await db.getFirstAsync<SessionRow>(
+    `SELECT id, server_session_id, cursor, status, active_position, created_at, expires_at
+       FROM feed_sessions
+      WHERE feed_type = 'foryou'
+        AND identity_scope = ?
+        AND status IN ('active', 'exhausted', 'expired')
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    identityScope,
+  );
+  if (!session) return null;
+
+  const rows = await db.getAllAsync<SessionItemRow>(
+    `SELECT position, snapshot_json, playback_position_ms
+       FROM feed_session_items
+      WHERE session_id = ?
+      ORDER BY position ASC`,
+    session.id,
+  );
+  try {
+    const tombstones = await tombstonedContentIds(
+      db,
+      rows
+        .map((row) => JSON.parse(row.snapshot_json) as ForYouItem)
+        .map((item) => item.id),
+    );
+    const items = rows
+      .map((row) => ({
+        item: JSON.parse(row.snapshot_json) as ForYouItem,
+        playbackPositionMs: row.playback_position_ms,
+      }))
+      .filter(({ item }) => !tombstones.has(item.id));
+    if (items.length === 0) return null;
+    return {
+      id: session.id,
+      serverSessionId: session.server_session_id,
+      cursor: null,
+      activePosition: Math.min(session.active_position, items.length - 1),
+      createdAt: session.created_at,
+      expiresAt: session.expires_at,
+      isOfflineSnapshot: true,
+      items,
+    };
+  } catch {
+    // A corrupt snapshot is never a valid offline fallback.
+    return null;
+  }
+}
 
 function nowIso(now: Date): string {
   return now.toISOString();
@@ -76,10 +137,18 @@ export async function loadFreshForYouSession(
   );
 
   try {
-    const items = rows.map((row) => ({
-      item: JSON.parse(row.snapshot_json) as ForYouItem,
-      playbackPositionMs: row.playback_position_ms,
-    }));
+    const tombstones = await tombstonedContentIds(
+      db,
+      rows
+        .map((row) => JSON.parse(row.snapshot_json) as ForYouItem)
+        .map((item) => item.id),
+    );
+    const items = rows
+      .map((row) => ({
+        item: JSON.parse(row.snapshot_json) as ForYouItem,
+        playbackPositionMs: row.playback_position_ms,
+      }))
+      .filter(({ item }) => !tombstones.has(item.id));
     if (items.length === 0) {
       return null;
     }
@@ -114,6 +183,10 @@ export async function appendForYouSessionPage(
   now = new Date(),
 ): Promise<FrozenForYouSession | null> {
   const updatedAt = nowIso(now);
+  const pageTombstones = await tombstonedContentIds(
+    db,
+    page.items.map((item) => item.id),
+  );
   await db.withExclusiveTransactionAsync(async (transaction) => {
     const session = await transaction.getFirstAsync<{
       cursor: string | null;
@@ -143,7 +216,11 @@ export async function appendForYouSessionPage(
     );
     let nextPosition = position?.next_position ?? 0;
     for (const item of page.items) {
-      if (existingIds.has(item.id) || hiddenIds.has(item.id)) {
+      if (
+        existingIds.has(item.id) ||
+        hiddenIds.has(item.id) ||
+        pageTombstones.has(item.id)
+      ) {
         continue;
       }
       await transaction.runAsync(
@@ -187,17 +264,27 @@ export async function appendForYouSessionPage(
     sessionId,
   );
   try {
+    const tombstones = await tombstonedContentIds(
+      db,
+      items
+        .map((item) => JSON.parse(item.snapshot_json) as ForYouItem)
+        .map((item) => item.id),
+    );
+    const parsedItems = items
+      .map((item) => ({
+        item: JSON.parse(item.snapshot_json) as ForYouItem,
+        playbackPositionMs: item.playback_position_ms,
+      }))
+      .filter(({ item }) => !tombstones.has(item.id));
+    if (parsedItems.length === 0) return null;
     return {
       id: row.id,
       serverSessionId: row.server_session_id,
       cursor: row.cursor,
-      activePosition: Math.min(row.active_position, items.length - 1),
+      activePosition: Math.min(row.active_position, parsedItems.length - 1),
       createdAt: row.created_at,
       expiresAt: row.expires_at,
-      items: items.map((item) => ({
-        item: JSON.parse(item.snapshot_json) as ForYouItem,
-        playbackPositionMs: item.playback_position_ms,
-      })),
+      items: parsedItems,
     } satisfies FrozenForYouSession;
   } catch {
     return null;
@@ -230,7 +317,13 @@ export async function materializeForYouSession(
     identityScope,
   );
   const hiddenIds = new Set(hiddenRows.map((row) => row.content_id));
-  const visibleItems = page.items.filter((item) => !hiddenIds.has(item.id));
+  const tombstones = await tombstonedContentIds(
+    db,
+    page.items.map((item) => item.id),
+  );
+  const visibleItems = page.items.filter(
+    (item) => !hiddenIds.has(item.id) && !tombstones.has(item.id),
+  );
 
   await db.withExclusiveTransactionAsync(async (transaction) => {
     await transaction.runAsync(

@@ -65,6 +65,7 @@ export function AccountScreen() {
               {auth.subject.email || t('account.signedIn')}
             </Text>
             <Pressable
+              testID="account-saved"
               accessibilityRole="button"
               onPress={() => router.push('/profile')}
               style={styles.action}
@@ -73,6 +74,7 @@ export function AccountScreen() {
               <Text style={styles.actionText}>{t('account.profile')}</Text>
             </Pressable>
             <Pressable
+              testID="account-delete"
               accessibilityRole="button"
               onPress={() => router.push('/interests')}
               style={styles.action}
@@ -128,6 +130,7 @@ export function AccountScreen() {
           </>
         )}
         <Pressable
+          testID="account-settings"
           accessibilityRole="button"
           onPress={() => router.push('/settings')}
           style={styles.action}

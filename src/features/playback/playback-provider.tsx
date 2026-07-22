@@ -16,7 +16,10 @@ import {
   type ReactNode,
 } from 'react';
 
-import { captureException } from '@/core/diagnostics/diagnostics';
+import {
+  captureDiagnostic,
+  captureException,
+} from '@/core/diagnostics/diagnostics';
 import {
   defaultExperiencePreferences,
   readExperiencePreferences,
@@ -96,6 +99,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const videoPlayerRef = useRef(videoPlayer);
   const audioPlayerRef = useRef(audioPlayer);
   const rateDefaultsRef = useRef(rateDefaults);
+  const lastDiagnosticPhase = useRef<string | null>(null);
 
   useEventListener(videoPlayer, 'playToEnd', () => {
     setSnapshot((current) =>
@@ -140,6 +144,24 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             ? 'playing'
             : 'paused'
           : 'idle';
+
+  useEffect(() => {
+    if (phase === lastDiagnosticPhase.current) return;
+    lastDiagnosticPhase.current = phase;
+    if (phase === 'playing') {
+      captureDiagnostic('playback_start', {
+        playback_source: snapshot.sourceStage ?? snapshot.kind ?? 'none',
+      });
+    } else if (phase === 'loading') {
+      captureDiagnostic('playback_buffering', {
+        playback_source: snapshot.kind ?? 'none',
+      });
+    } else if (phase === 'failed') {
+      captureDiagnostic('playback_fallback_exhausted', {
+        playback_source: snapshot.kind ?? 'none',
+      });
+    }
+  }, [phase, snapshot.kind, snapshot.sourceStage]);
   const start = useCallback(
     async (item: PlaybackItem, options: StartPlaybackOptions = {}) => {
       const request = ++operation.current;

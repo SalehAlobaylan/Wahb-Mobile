@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { redactSentryEvent } from './sentry-privacy';
+import { HttpError, toDiagnosticErrorContext } from '@/core/api/errors';
 
 describe('redactSentryEvent', () => {
   it('keeps only allow-listed diagnostic context', () => {
@@ -44,4 +45,15 @@ describe('redactSentryEvent', () => {
     expect(redacted.extra).toBeUndefined();
     expect(redacted.breadcrumbs).toBeUndefined();
   });
+});
+
+it('redacts a dynamic identifier and query string from route diagnostics', () => {
+  const context = toDiagnosticErrorContext(
+    new HttpError({
+      method: 'GET',
+      path: '/api/v1/content/76c24f2c-b8df-4b0e-bfd8-cba0f7aa4a8d?token=private',
+      status: 404,
+    }),
+  );
+  expect(context.path).toBe('/api/v1/content/:id');
 });

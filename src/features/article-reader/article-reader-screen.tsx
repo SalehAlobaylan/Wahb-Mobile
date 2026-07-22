@@ -24,7 +24,7 @@ import {
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { ArticleContent } from '@/core/api';
+import { HttpError, type ArticleContent } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
@@ -33,6 +33,7 @@ import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 import {
   loadArticleSnapshot,
+  deleteArticleSnapshot,
   loadReaderPosition,
   saveArticleSnapshot,
   saveReaderPosition,
@@ -110,6 +111,10 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
         await saveArticleSnapshot(db, article);
         return { article, readerPosition, source: 'network' };
       } catch (error) {
+        if (error instanceof HttpError && error.context.status === 404) {
+          await deleteArticleSnapshot(db, id!);
+          throw error;
+        }
         if (cached) {
           return {
             article: cached.article,

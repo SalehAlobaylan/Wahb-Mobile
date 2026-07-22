@@ -12,12 +12,23 @@ export const resources = {
         offline: 'مصمم للتنزيل لاحقاً',
         note: 'الخطوة التالية: بناء أول مسار كامل من واجهة وهب إلى خدمات المحتوى.',
       },
+      errors: {
+        title: 'نحتاج إلى المحاولة مرة أخرى.',
+        copy: 'حافظنا على تقدمك المحلي. حاول فتح هذه الصفحة مرة أخرى.',
+        retry: 'إعادة المحاولة',
+      },
       foryou: {
         feedLabel: 'من أجلك',
         loading: 'جارٍ إعداد جلستك…',
         unavailable: 'تعذّر تحميل المحتوى الآن.',
         unavailableDescription:
           'احتفظنا بأي جلسة محفوظة. حاول مجددًا عند عودة الاتصال.',
+        coldOfflineTitle: 'أنت غير متصل بالإنترنت',
+        coldOfflineCopy:
+          'لا توجد جلسة محفوظة على هذا الجهاز بعد. اتصل بالإنترنت لبدء «من أجلك».',
+        checkConnection: 'التحقق من الاتصال',
+        offlineSnapshot: 'تصفح نسخة محفوظة دون اتصال',
+        connectToPlay: 'اتصل بالإنترنت للتشغيل',
         retry: 'إعادة المحاولة',
         refreshing: 'جارٍ تحديث الجلسة…',
         newContent: 'محتوى جديد',
@@ -273,12 +284,23 @@ export const resources = {
         offline: 'Download-ready architecture',
         note: 'Next: build the first complete path from Wahb’s interface to its content services.',
       },
+      errors: {
+        title: 'Something needs another try.',
+        copy: 'We kept your local progress safe. Try reopening this surface.',
+        retry: 'Retry',
+      },
       foryou: {
         feedLabel: 'FOR YOU',
         loading: 'Preparing your session…',
         unavailable: 'Content is unavailable right now.',
         unavailableDescription:
           'Any saved session remains safe. Try again when the connection returns.',
+        coldOfflineTitle: 'You’re offline',
+        coldOfflineCopy:
+          'There is no saved session on this device yet. Connect to start For You.',
+        checkConnection: 'Check connection',
+        offlineSnapshot: 'Viewing a saved offline session',
+        connectToPlay: 'Connect to play',
         retry: 'Retry',
         refreshing: 'Refreshing your session…',
         newContent: 'New Content',

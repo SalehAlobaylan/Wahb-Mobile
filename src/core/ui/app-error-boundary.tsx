@@ -2,6 +2,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { captureException } from '@/core/diagnostics/diagnostics';
+import i18n from '@/core/i18n';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
 
 type AppErrorBoundaryProps = {
@@ -37,22 +38,22 @@ export class AppErrorBoundary extends Component<
 
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.content}>
+        <View accessibilityLiveRegion="assertive" style={styles.content}>
           <Text style={styles.eyebrow}>WAHB</Text>
-          <Text style={styles.title}>Something needs another try.</Text>
-          <Text style={styles.description}>
-            We kept your local progress safe. Try reopening this surface.
+          <Text accessibilityRole="header" style={styles.title}>
+            {i18n.t('errors.title')}
           </Text>
+          <Text style={styles.description}>{i18n.t('errors.copy')}</Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Retry"
+            accessibilityLabel={i18n.t('errors.retry')}
             onPress={this.retry}
             style={({ pressed }) => [
               styles.button,
               pressed && styles.buttonPressed,
             ]}
           >
-            <Text style={styles.buttonText}>Retry</Text>
+            <Text style={styles.buttonText}>{i18n.t('errors.retry')}</Text>
           </Pressable>
         </View>
       </SafeAreaView>

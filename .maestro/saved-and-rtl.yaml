@@ -1,0 +1,20 @@
+appId: com.salehspace.wahb
+---
+# The secure runner begins this flow with a verified account fixture. It never
+# stores credentials in source control.
+- launchApp
+- tapOn:
+    id: 'account-entry'
+- tapOn:
+    id: 'account-saved'
+- assertVisible: 'Saved'
+- takeScreenshot: 'saved-library'
+- back
+- tapOn:
+    id: 'account-settings'
+- tapOn:
+    id: 'settings-ui-language-ar'
+- stopApp
+- launchApp
+- assertVisible: 'من أجلك'
+- takeScreenshot: 'for-you-rtl'

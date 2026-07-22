@@ -58,7 +58,7 @@ export function toDiagnosticErrorContext(
     return {
       error_name: error.name,
       method: error.context.method,
-      path: error.context.path,
+      path: redactDiagnosticPath(error.context.path),
       status: error.context.status,
       ...(error instanceof ContractError
         ? { issue_count: error.issueCount }
@@ -67,4 +67,17 @@ export function toDiagnosticErrorContext(
   }
 
   return { error_name: error instanceof Error ? error.name : 'UnknownError' };
+}
+
+/** Removes query material and dynamic identifiers before diagnostics see a route. */
+function redactDiagnosticPath(path: string): string {
+  return path
+    .split('?')[0]!
+    .replaceAll(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+      ':id',
+    )
+    .replace(/\/sessions\/[^/]+/g, '/sessions/:id')
+    .replace(/\/content\/[^/]+/g, '/content/:id')
+    .replace(/\/transcripts\/[^/]+/g, '/transcripts/:id');
 }

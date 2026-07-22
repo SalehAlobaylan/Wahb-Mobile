@@ -14,6 +14,7 @@ export async function flushOutbox(
   cms: CmsApi,
   identityScope: string,
   sessionId: string,
+  options?: { onContentTombstone?: (contentId: string) => Promise<void> },
 ): Promise<number> {
   let delivered = 0;
   for (;;) {
@@ -59,6 +60,9 @@ export async function flushOutbox(
       const status =
         error instanceof CmsHttpError ? error.context.status : undefined;
       await retryOrRejectOutboxEvent(db, event, status);
+      if (status === 404 && event.payload.type !== 'report') {
+        await options?.onContentTombstone?.(event.payload.contentId);
+      }
       return delivered;
     }
   }

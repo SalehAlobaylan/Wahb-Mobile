@@ -48,6 +48,26 @@ export type ClaimedOutboxEvent = {
   attemptCount: number;
 };
 
+export type OutboxHealth = {
+  pending: number;
+  failed: number;
+};
+
+export async function readOutboxHealth(
+  db: SQLiteDatabase,
+  identityScope: string,
+): Promise<OutboxHealth> {
+  const row = await db.getFirstAsync<OutboxHealth>(
+    `SELECT
+       SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed
+     FROM event_outbox
+     WHERE identity_scope = ?`,
+    identityScope,
+  );
+  return { pending: row?.pending ?? 0, failed: row?.failed ?? 0 };
+}
+
 function asClaimedEvent(row: EventOutboxRow): ClaimedOutboxEvent | null {
   if (!isOutboxEventType(row.event_type)) {
     return null;

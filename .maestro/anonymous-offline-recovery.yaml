@@ -1,0 +1,17 @@
+appId: com.salehspace.wahb
+---
+- launchApp:
+    clearState: true
+- assertVisible: 'FOR YOU'
+- tapOn:
+    id: 'for-you-playback-toggle'
+- extendedWaitUntil:
+    visible: 'Pause'
+    timeout: 10000
+- takeScreenshot: 'for-you-online'
+# Run the following repeat on a simulator/device with networking disabled after
+# first materializing a session. The shell harness owns the network toggle.
+- stopApp
+- launchApp
+- assertVisible: 'Viewing a saved offline session'
+- takeScreenshot: 'for-you-offline-snapshot'

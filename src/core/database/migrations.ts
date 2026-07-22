@@ -149,6 +149,17 @@ export const migrations: readonly Migration[] = [
         ADD COLUMN last_progress_reported_seconds INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    // A server 404 is an authoritative tombstone, not a retryable offline
+    // failure. Keep it outside a feed snapshot so reconnect cannot revive it.
+    version: 9,
+    statements: `
+      CREATE TABLE IF NOT EXISTS tombstoned_content_items (
+        content_id TEXT PRIMARY KEY NOT NULL,
+        tombstoned_at TEXT NOT NULL
+      );
+    `,
+  },
 ] as const;
 
 type UserVersionRow = {

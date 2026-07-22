@@ -10,12 +10,18 @@ import {
 } from 'react';
 
 import type { InteractionType } from '@/core/api';
-import { captureException } from '@/core/diagnostics/diagnostics';
+import {
+  captureDiagnostic,
+  captureException,
+} from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
+import { queryClient } from '@/core/query/query-client';
+import { recordContentTombstone } from '@/core/database/tombstones';
 import { useAuth } from '@/features/auth/auth-provider';
 
 import {
   enqueueInteraction,
+  readOutboxHealth,
   type QueuedOutboxEvent,
 } from './outbox-repository';
 import { flushOutbox } from './outbox-service';
@@ -35,7 +41,22 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
       ? `user:${subject.id}`
       : `anonymous:${installationId}`;
     try {
-      await flushOutbox(db, clients.cms, identityScope, installationId);
+      const delivered = await flushOutbox(
+        db,
+        clients.cms,
+        identityScope,
+        installationId,
+        {
+          onContentTombstone: async (contentId) => {
+            await recordContentTombstone(db, contentId);
+            await queryClient.invalidateQueries({
+              queryKey: ['foryou-session'],
+            });
+          },
+        },
+      );
+      const health = await readOutboxHealth(db, identityScope);
+      captureDiagnostic('outbox_health', { delivered, ...health });
     } catch (error) {
       captureException('outbox_flush_failed', error);
     }

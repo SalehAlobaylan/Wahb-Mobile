@@ -20,6 +20,7 @@ import {
   Radio,
   RotateCcw,
   Share2,
+  WifiOff,
   EyeOff,
   X,
 } from 'lucide-react-native';
@@ -41,7 +42,11 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import { useTranslation } from 'react-i18next';
 
-import { captureException } from '@/core/diagnostics/diagnostics';
+import {
+  captureDiagnostic,
+  captureException,
+} from '@/core/diagnostics/diagnostics';
+import { NetworkError } from '@/core/api';
 import {
   hapticSelection,
   hapticSuccess,
@@ -127,6 +132,7 @@ export function ForYouSliceScreen() {
   const feedListRef =
     useRef<FlatList<FrozenForYouSession['items'][number]>>(null);
   const lastPagerSessionId = useRef<string | null>(null);
+  const diagnosedSessionId = useRef<string | null>(null);
   const pagerHasInteracted = useRef(false);
   const playbackPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pageHeight, setPageHeight] = useState(0);
@@ -139,6 +145,10 @@ export function ForYouSliceScreen() {
     id: string;
   } | null>(null);
   const session = sessionQuery.data;
+  const isOfflineSnapshot = session?.isOfflineSnapshot === true;
+  const [connectionRequiredForId, setConnectionRequiredForId] = useState<
+    string | null
+  >(null);
   const position =
     selection !== null && selection.sessionId === session?.id
       ? selection.position
@@ -159,6 +169,9 @@ export function ForYouSliceScreen() {
         : null,
     [item],
   );
+
+  const requiresConnection =
+    isOfflineSnapshot && connectionRequiredForId === item?.id;
   const isCurrent = playback.item?.id === item?.id;
   const isVideoVisible = isCurrent && playback.kind === 'video';
   const showUpNext =
@@ -196,6 +209,18 @@ export function ForYouSliceScreen() {
     queryFn: () => clients.cms.getTranscript(item!.transcript_id!),
     enabled: displayMode === 'transcript' && Boolean(item?.transcript_id),
   });
+
+  useEffect(() => {
+    if (!session || !item || diagnosedSessionId.current === session.id) {
+      return;
+    }
+    diagnosedSessionId.current = session.id;
+    // Keep first-render and session-health signals free of content/session
+    // identifiers. CMS remains the only product and ranking event pipeline.
+    const eventType = isOfflineSnapshot ? 'offline_snapshot' : 'stable';
+    captureDiagnostic('foryou_first_render', { event_type: eventType });
+    captureDiagnostic('foryou_session_health', { event_type: eventType });
+  }, [isOfflineSnapshot, item, session]);
 
   const queueCompletion = useCallback(
     async (
@@ -426,6 +451,12 @@ export function ForYouSliceScreen() {
 
   function togglePlayback() {
     if (!activePlaybackItem) {
+      return;
+    }
+    if (isOfflineSnapshot) {
+      // Feed metadata is preserved, but this is not an explicit download and
+      // must never pretend the remote source is playable without a connection.
+      setConnectionRequiredForId(activePlaybackItem.id);
       return;
     }
 
@@ -689,7 +720,12 @@ export function ForYouSliceScreen() {
   }
 
   if (identityQuery.isError || sessionQuery.isError) {
-    return <ForYouFailure onRetry={() => void sessionQuery.refetch()} />;
+    return (
+      <ForYouFailure
+        offline={sessionQuery.error instanceof NetworkError}
+        onRetry={() => void sessionQuery.refetch()}
+      />
+    );
   }
 
   if (!session || !item) {
@@ -864,6 +900,7 @@ export function ForYouSliceScreen() {
               {position + 1} / {session.items.length}
             </Text>
             <Pressable
+              testID="account-entry"
               accessibilityLabel={t('account.title')}
               accessibilityRole="button"
               onPress={() => router.push('/account')}
@@ -873,6 +910,14 @@ export function ForYouSliceScreen() {
             </Pressable>
           </View>
         </View>
+        {isOfflineSnapshot ? (
+          <View accessibilityLiveRegion="polite" style={styles.offlineBanner}>
+            <WifiOff color={colors.inkInverse} size={14} />
+            <Text style={styles.offlineBannerText}>
+              {t('foryou.offlineSnapshot')}
+            </Text>
+          </View>
+        ) : null}
         {displayMode === 'transcript' ? (
           <ForYouTranscriptMode
             hasTranscript={Boolean(item.transcript_id)}
@@ -917,7 +962,14 @@ export function ForYouSliceScreen() {
             />
           </View>
 
-          {playback.error && isCurrent ? (
+          {requiresConnection ? (
+            <View
+              accessibilityLiveRegion="polite"
+              style={styles.playbackFailure}
+            >
+              <Text style={styles.errorText}>{t('foryou.connectToPlay')}</Text>
+            </View>
+          ) : playback.error && isCurrent ? (
             <View style={styles.playbackFailure}>
               <Text style={styles.errorText}>{t('foryou.playbackError')}</Text>
               <Pressable
@@ -1050,6 +1102,7 @@ export function ForYouSliceScreen() {
               </Text>
             </Pressable>
             <Pressable
+              testID="for-you-playback-toggle"
               accessibilityRole="button"
               accessibilityLabel={t('foryou.previous')}
               disabled={position === 0}
@@ -1277,22 +1330,37 @@ function ForYouLoading() {
   );
 }
 
-function ForYouFailure({ onRetry }: { onRetry: () => void }) {
+function ForYouFailure({
+  offline,
+  onRetry,
+}: {
+  offline: boolean;
+  onRetry: () => void;
+}) {
   const { t } = useTranslation();
   return (
     <SafeAreaView style={styles.loadingScreen}>
-      <Text style={styles.failureTitle}>{t('foryou.unavailable')}</Text>
+      <WifiOff color={colors.pressRed} size={31} />
+      <Text style={styles.failureTitle}>
+        {offline ? t('foryou.coldOfflineTitle') : t('foryou.unavailable')}
+      </Text>
       <Text style={styles.failureText}>
-        {t('foryou.unavailableDescription')}
+        {offline
+          ? t('foryou.coldOfflineCopy')
+          : t('foryou.unavailableDescription')}
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t('foryou.retry')}
+        accessibilityLabel={
+          offline ? t('foryou.checkConnection') : t('foryou.retry')
+        }
         onPress={onRetry}
         style={styles.retryButton}
       >
         <RotateCcw color={colors.inkInverse} size={18} />
-        <Text style={styles.retryText}>{t('foryou.retry')}</Text>
+        <Text style={styles.retryText}>
+          {offline ? t('foryou.checkConnection') : t('foryou.retry')}
+        </Text>
       </Pressable>
     </SafeAreaView>
   );
@@ -1515,6 +1583,25 @@ const styles = StyleSheet.create({
     color: colors.inkInverse,
     fontFamily: fontFamilies.mono,
     fontSize: 12,
+  },
+  offlineBanner: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.58)',
+    borderColor: colors.inkInverse,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginLeft: spacing.lg,
+    marginTop: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  offlineBannerText: {
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 11,
   },
   footer: { marginTop: 'auto', padding: spacing.lg },
   metaRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },

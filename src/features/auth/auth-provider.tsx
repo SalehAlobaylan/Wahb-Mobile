@@ -18,6 +18,7 @@ import {
 } from '@/core/api';
 import { resetInstallationId } from '@/core/identity/installation-id';
 import { queryClient } from '@/core/query/query-client';
+import { setDiagnosticActor } from '@/core/diagnostics/sentry';
 
 import { createAuthenticatedServiceClients } from './authenticated-service-clients';
 import { AuthSessionManager, type AuthSessionSnapshot } from './auth-session';
@@ -78,6 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }),
     [],
   );
+
+  useEffect(() => {
+    void setDiagnosticActor(snapshot.subject?.id ?? null);
+  }, [snapshot.subject?.id]);
 
   const accept = useCallback(
     async (tokens: AuthTokenPair) => {
