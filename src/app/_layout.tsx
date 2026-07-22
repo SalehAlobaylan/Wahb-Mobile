@@ -15,8 +15,13 @@ import { useEffect, useState } from 'react';
 
 import { initializeDatabase } from '@/core/database/migrations';
 import { initializeDiagnostics } from '@/core/diagnostics/sentry';
+import { setHapticsEnabled } from '@/core/haptics/feedback';
 import '@/core/i18n';
 import { bootstrapLanguagePreferences } from '@/features/settings/language-preferences';
+import {
+  applyThemePreference,
+  readExperiencePreferences,
+} from '@/features/settings/experience-preferences';
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
@@ -44,7 +49,13 @@ export default function RootLayout() {
   const [languageReady, setLanguageReady] = useState(false);
 
   useEffect(() => {
-    void bootstrapLanguagePreferences().finally(() => setLanguageReady(true));
+    void Promise.all([
+      bootstrapLanguagePreferences(),
+      readExperiencePreferences().then((preferences) => {
+        setHapticsEnabled(preferences.hapticsEnabled);
+        applyThemePreference(preferences.theme);
+      }),
+    ]).finally(() => setLanguageReady(true));
   }, []);
 
   useEffect(() => {
@@ -81,6 +92,7 @@ export default function RootLayout() {
                   <Stack.Screen name="saved" />
                   <Stack.Screen name="history" />
                   <Stack.Screen name="settings" />
+                  <Stack.Screen name="delete-account" />
                 </Stack>
                 <LinkDispatcherProvider />
                 <NonFeedNowPlaying />

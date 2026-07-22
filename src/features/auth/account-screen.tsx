@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Settings,
   SlidersHorizontal,
+  Trash2,
   UserRound,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
@@ -103,6 +104,16 @@ export function AccountScreen() {
               <LogOut color={colors.ink} size={20} />
               <Text style={styles.actionText}>{t('account.signOut')}</Text>
             </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/delete-account')}
+              style={[styles.action, styles.destructiveAction]}
+            >
+              <Trash2 color={colors.pressRed} size={20} />
+              <Text style={styles.destructiveText}>
+                {t('account.deleteAccount')}
+              </Text>
+            </Pressable>
           </>
         ) : (
           <>
@@ -190,6 +201,12 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: colors.ink,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 15,
+  },
+  destructiveAction: { borderColor: colors.pressRed },
+  destructiveText: {
+    color: colors.pressRed,
     fontFamily: fontFamilies.bodyBold,
     fontSize: 15,
   },

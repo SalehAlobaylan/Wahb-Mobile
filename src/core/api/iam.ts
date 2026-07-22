@@ -18,6 +18,7 @@ export type IamApi = {
   verifyEmail(token: string): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, newPassword: string): Promise<void>;
+  requestAccountDeletion(password: string): Promise<void>;
   getProfile(): Promise<IamProfile>;
   updateProfile(input: UpdateProfileInput): Promise<IamProfile>;
 };
@@ -112,6 +113,17 @@ export function createIamApi(transport: Transport): IamApi {
         messageResponseSchema,
       );
     },
+    async requestAccountDeletion(password) {
+      await transport.request(
+        {
+          body: { password },
+          method: 'POST',
+          path: '/api/v1/users/profile/deletion',
+          authenticated: true,
+        },
+        messageResponseSchema,
+      );
+    },
     getProfile() {
       return transport.request(
         { method: 'GET', path: '/api/v1/users/profile', authenticated: true },
@@ -125,9 +137,13 @@ export function createIamApi(transport: Transport): IamApi {
           path: '/api/v1/users/profile',
           authenticated: true,
           body: {
-            ...(input.username !== undefined ? { username: input.username } : {}),
+            ...(input.username !== undefined
+              ? { username: input.username }
+              : {}),
             ...(input.bio !== undefined ? { bio: input.bio } : {}),
-            ...(input.avatarUrl !== undefined ? { avatar_url: input.avatarUrl } : {}),
+            ...(input.avatarUrl !== undefined
+              ? { avatar_url: input.avatarUrl }
+              : {}),
           },
         },
         iamProfileSchema,

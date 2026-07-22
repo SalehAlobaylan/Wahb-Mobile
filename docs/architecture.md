@@ -195,6 +195,29 @@ immediately and isolates account-scoped cached data.
 Universal Links will own verified-email and password-reset journeys. Social
 login is intentionally deferred.
 
+## Settings, legal, and deletion
+
+Settings persist the UI/content-language choices, theme preference, autoplay,
+haptics, and a default speed for video, podcast, and audio chapters. Controls
+that do not yet affect the product (streaming quality, spatial audio,
+downloads, and notifications) are explicitly unavailable rather than active
+placeholders. The selected theme is applied as a native appearance override;
+the existing editorial light/dark token pair remains the shared source for
+surfaces as screen modules adopt it.
+
+The About & Legal card opens stable Arabic or English pages at
+`https://wahb.salehspace.dev/{locale}/…` for Privacy, Terms, Community
+Guidelines, Support, Reporting, and open-source notices. The domain hosts
+those pages in Wahb-Platform rather than embedding legal text inside the app.
+
+Delete Account is available to an authenticated person from Account and
+Settings. It requires the current password and has one irreversible warning.
+After IAM accepts the request, the device clears its local Wahb partition and
+returns to anonymous browsing immediately. IAM has already revoked credentials
+and suspended the account at that point; it later calls CMS to erase product
+data, hard-deletes the IAM identity, and sends the confirmation email only on
+completion. There is intentionally no recovery window or deletion-status UI.
+
 M6 keeps the access token in memory and the opaque refresh token only in
 SecureStore. `AuthSessionManager` is the sole refresh-rotation owner, so
 concurrent authenticated `401`s join one rotation rather than revoking one

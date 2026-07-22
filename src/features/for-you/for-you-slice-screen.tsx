@@ -602,7 +602,10 @@ export function ForYouSliceScreen() {
       return;
     }
     void playback
-      .start(activePlaybackItem, { positionSeconds: 0, autoplay: true })
+      .start(activePlaybackItem, {
+        positionSeconds: 0,
+        autoplay: playback.autoplayEnabled,
+      })
       .finally(() => setPendingAutoplay(null));
   }, [activePlaybackItem, pendingAutoplay, playback, position, session?.id]);
 

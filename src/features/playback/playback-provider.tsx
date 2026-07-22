@@ -17,6 +17,11 @@ import {
 } from 'react';
 
 import { captureException } from '@/core/diagnostics/diagnostics';
+import {
+  defaultExperiencePreferences,
+  readExperiencePreferences,
+  writeExperiencePreferences,
+} from '@/features/settings/experience-preferences';
 
 import {
   createInitialPlaybackSnapshot,
@@ -25,6 +30,7 @@ import {
   playbackRateClassFor,
   resolvePlaybackKind,
   type PlaybackItem,
+  type PlaybackRateClass,
   type PlaybackRateDefaults,
   type PlaybackSnapshot,
 } from './playback-model';
@@ -49,11 +55,15 @@ function waitForRetry(delayMs: number): Promise<void> {
 
 export type PlaybackController = PlaybackSnapshot & {
   videoPlayer: VideoPlayer;
+  autoplayEnabled: boolean;
+  rateDefaults: PlaybackRateDefaults;
   start(item: PlaybackItem, options?: StartPlaybackOptions): Promise<void>;
   play(): void;
   pause(): void;
   seekBy(seconds: number): Promise<void>;
   setRate(rate: number): void;
+  setDefaultRate(rateClass: PlaybackRateClass, rate: number): void;
+  setAutoplayEnabled(enabled: boolean): void;
   dismiss(): void;
 };
 
@@ -79,6 +89,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState(createInitialPlaybackSnapshot);
   const [rateDefaults, setRateDefaults] =
     useState<PlaybackRateDefaults>(defaultPlaybackRates);
+  const [autoplayEnabled, setAutoplayEnabledState] = useState(
+    defaultExperiencePreferences.autoplayEnabled,
+  );
   const operation = useRef(0);
   const videoPlayerRef = useRef(videoPlayer);
   const audioPlayerRef = useRef(audioPlayer);
@@ -99,6 +112,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       playsInSilentMode: true,
       shouldPlayInBackground: true,
       interruptionMode: 'doNotMix',
+    });
+  }, []);
+
+  useEffect(() => {
+    void readExperiencePreferences().then((preferences) => {
+      setAutoplayEnabledState(preferences.autoplayEnabled);
     });
   }, []);
 
@@ -127,7 +146,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       const kind = resolvePlaybackKind(item.playback);
       const rate = rateDefaultsRef.current[playbackRateClassFor(item)];
       const positionSeconds = options.positionSeconds ?? 0;
-      const autoplay = options.autoplay ?? true;
+      const autoplay = options.autoplay ?? autoplayEnabled;
       const video = videoPlayerRef.current;
       const audio = audioPlayerRef.current;
 
@@ -240,7 +259,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           : current,
       );
     },
-    [],
+    [autoplayEnabled],
   );
 
   const play = useCallback(() => {
@@ -300,6 +319,40 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     [snapshot.item, snapshot.kind],
   );
 
+  const setDefaultRate = useCallback(
+    (rateClass: PlaybackRateClass, rate: number) => {
+      if (!isSupportedPlaybackRate(rate)) {
+        return;
+      }
+      void writePlaybackRateDefault(
+        rateDefaultsRef.current,
+        rateClass,
+        rate,
+      ).then((defaults) => {
+        rateDefaultsRef.current = defaults;
+        setRateDefaults(defaults);
+      });
+      if (snapshot.item && playbackRateClassFor(snapshot.item) === rateClass) {
+        setRate(rate);
+      }
+    },
+    [setRate, snapshot.item],
+  );
+
+  const setAutoplayEnabled = useCallback((enabled: boolean) => {
+    setAutoplayEnabledState(enabled);
+    void readExperiencePreferences()
+      .then((preferences) =>
+        writeExperiencePreferences({
+          ...preferences,
+          autoplayEnabled: enabled,
+        }),
+      )
+      .catch((error) =>
+        captureException('autoplay_preference_write_failed', error),
+      );
+  }, []);
+
   const dismiss = useCallback(() => {
     ++operation.current;
     videoPlayerRef.current.pause();
@@ -341,21 +394,29 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       ...playbackMetrics,
       didReachEnd,
       videoPlayer,
+      autoplayEnabled,
+      rateDefaults,
       start,
       play,
       pause,
       seekBy,
       setRate,
+      setDefaultRate,
+      setAutoplayEnabled,
       dismiss,
     };
   }, [
     dismiss,
     audioStatus,
+    autoplayEnabled,
     pause,
     phase,
     play,
     seekBy,
     setRate,
+    setDefaultRate,
+    setAutoplayEnabled,
+    rateDefaults,
     snapshot,
     start,
     videoTimeUpdate,

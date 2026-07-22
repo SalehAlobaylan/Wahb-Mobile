@@ -33,6 +33,7 @@ type AuthController = AuthSessionSnapshot & {
   verifyEmail(token: string): Promise<void>;
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, newPassword: string): Promise<void>;
+  requestAccountDeletion(password: string): Promise<void>;
   resetLocalData(): Promise<void>;
 };
 
@@ -111,6 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
     sync();
   }, [sync]);
+  const requestAccountDeletion = useCallback(async (password: string) => {
+    await authenticatedClients.iam.requestAccountDeletion(password);
+  }, []);
 
   const controller = useMemo<AuthController>(
     () => ({
@@ -124,9 +128,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyEmail: publicClients.iam.verifyEmail,
       requestPasswordReset: publicClients.iam.requestPasswordReset,
       resetPassword: publicClients.iam.resetPassword,
+      requestAccountDeletion,
       resetLocalData,
     }),
-    [isBootstrapping, login, logout, register, resetLocalData, snapshot],
+    [
+      isBootstrapping,
+      login,
+      logout,
+      register,
+      requestAccountDeletion,
+      resetLocalData,
+      snapshot,
+    ],
   );
 
   return (
