@@ -1,9 +1,18 @@
 import { z } from 'zod';
 
+// Expo substitutes an empty string for `EXPO_PUBLIC_*` keys declared without a
+// value. Treat that as absent so local development never needs a placeholder
+// DSN, while still rejecting a non-empty malformed URL.
+const optionalUrl = z.preprocess(
+  (value) =>
+    typeof value === 'string' && value.trim() === '' ? undefined : value,
+  z.url().optional(),
+);
+
 const envSchema = z.object({
   EXPO_PUBLIC_CMS_URL: z.url().default('http://localhost:8080'),
   EXPO_PUBLIC_IAM_URL: z.url().default('http://localhost:4003'),
-  EXPO_PUBLIC_SENTRY_DSN: z.url().optional(),
+  EXPO_PUBLIC_SENTRY_DSN: optionalUrl,
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

@@ -35,6 +35,7 @@ export const resources = {
         connectToPlay: 'اتصل بالإنترنت للتشغيل',
         retry: 'إعادة المحاولة',
         refreshing: 'جارٍ تحديث الجلسة…',
+        refreshSession: 'تحديث الجلسة',
         newContent: 'محتوى جديد',
         comments: 'التعليقات',
         like: 'إعجاب',
@@ -362,6 +363,7 @@ export const resources = {
         caughtUp: 'You reached the end of this session.',
         caughtUpDescription:
           'New content appears through an intentional refresh.',
+        refreshSession: 'Refresh session',
         play: 'Play',
         pause: 'Pause',
         playbackProgress: 'Playback progress',

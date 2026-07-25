@@ -11,6 +11,24 @@ describe('parseEnv', () => {
     });
   });
 
+  it('treats an empty Sentry DSN as absent for local development', () => {
+    expect(
+      parseEnv({
+        EXPO_PUBLIC_SENTRY_DSN: '  ',
+      }),
+    ).toMatchObject({
+      EXPO_PUBLIC_SENTRY_DSN: undefined,
+    });
+  });
+
+  it('still rejects a non-empty invalid Sentry DSN', () => {
+    expect(() =>
+      parseEnv({
+        EXPO_PUBLIC_SENTRY_DSN: 'not-a-url',
+      }),
+    ).toThrow();
+  });
+
   it('rejects invalid service URLs', () => {
     expect(() =>
       parseEnv({

@@ -937,7 +937,12 @@ export function ForYouSliceScreen() {
   }
 
   if (!session || !item) {
-    return <ForYouEmpty />;
+    return (
+      <ForYouEmpty
+        refreshing={isRefreshing}
+        onRefresh={() => void refreshForYouSession()}
+      />
+    );
   }
 
   return (
@@ -1608,12 +1613,35 @@ function ForYouFailure({
   );
 }
 
-function ForYouEmpty() {
+function ForYouEmpty({
+  onRefresh,
+  refreshing,
+}: {
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <SafeAreaView style={styles.loadingScreen}>
       <Text style={styles.failureTitle}>{t('foryou.caughtUp')}</Text>
       <Text style={styles.failureText}>{t('foryou.caughtUpDescription')}</Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('foryou.refreshSession')}
+        disabled={refreshing}
+        onPress={onRefresh}
+        style={({ pressed }) => [
+          styles.retryButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <RotateCcw color={colors.inkInverse} size={18} />
+        <Text style={styles.retryText}>
+          {refreshing
+            ? t('foryou.refreshing')
+            : t('foryou.refreshSession')}
+        </Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
