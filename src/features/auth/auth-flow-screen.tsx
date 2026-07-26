@@ -1,22 +1,31 @@
 import { useLocalSearchParams, router } from 'expo-router';
+import { Image } from 'expo-image';
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { ArrowLeft, MailCheck } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ArrowLeft, MailCheck, Zap } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 import { HttpError } from '@/core/api';
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+} from '@/design/tokens';
+import { useWahbTheme } from '@/design/theme';
+import { goBackOrReplace } from '@/core/navigation/go-back';
 
 import { useAuth } from './auth-provider';
 import {
@@ -73,6 +82,7 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
     verified?: string;
   }>();
   const auth = useAuth();
+  const { theme } = useWahbTheme();
   const [email, setEmail] = useState(params.email ?? '');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -160,6 +170,24 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
     }
   };
 
+  const quickSignIn = async () => {
+    setError(null);
+    setNotice(null);
+    setRecoveryAction(null);
+    setIsSubmitting(true);
+    try {
+      // Mirrors Wahb-Platform's local quick-sign-in account. It intentionally
+      // uses the normal AuthProvider path so tokens, account changes, and
+      // authenticated client state behave exactly like a typed sign-in.
+      await auth.login('admin@gmail.com', 'admin');
+      router.replace('/');
+    } catch {
+      setError(t('auth.sign-in.quickFail'));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const emailInput = (
     <TextInput
       testID="auth-email"
@@ -178,25 +206,35 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
   );
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.root}
       >
         <ScrollView
           contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
         >
           <Pressable
             accessibilityLabel={t('auth.back')}
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace('/sign-in')}
             style={styles.back}
           >
             <ArrowLeft color={colors.ink} size={22} />
           </Pressable>
           <View style={styles.heading}>
-            <Text style={styles.eyebrow}>WAHB</Text>
+            <Image
+              accessibilityLabel="Wahb"
+              contentFit="contain"
+              source={
+                theme.background === colors.paperDark
+                  ? require('../../../assets/brand/wahb_mark_transparent_dark.png')
+                  : require('../../../assets/brand/wahb_mark_transparent.png')
+              }
+              style={styles.brandMark}
+            />
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.description}>
               {t(`auth.${flow}.description`)}
@@ -296,6 +334,49 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
             )}
           </Pressable>
           {flow === 'sign-in' ? (
+            <View style={styles.quickSignIn}>
+              <View style={styles.divider}>
+                <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+                <Text style={[styles.dividerLabel, { color: theme.mutedForeground }]}>
+                  {t('auth.sign-in.or')}
+                </Text>
+                <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              </View>
+              <Pressable
+                testID="auth-quick-sign-in"
+                accessibilityLabel={t('auth.sign-in.quick')}
+                accessibilityRole="button"
+                disabled={isSubmitting}
+                onPress={() => void quickSignIn()}
+                style={({ pressed }) => [
+                  styles.quickButton,
+                  { backgroundColor: theme.card, borderColor: theme.border },
+                  isSubmitting && styles.disabled,
+                  pressed && !isSubmitting && styles.pressed,
+                ]}
+              >
+                {isSubmitting ? (
+                  <ActivityIndicator color={theme.foreground} />
+                ) : (
+                  <>
+                    <Zap color={theme.accent} size={18} />
+                    <Text
+                      style={[
+                        styles.quickButtonText,
+                        { color: theme.foreground },
+                      ]}
+                    >
+                      {t('auth.sign-in.quick')}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+              <Text style={[styles.quickHint, { color: theme.mutedForeground }]}>
+                {t('auth.sign-in.quickHint')}
+              </Text>
+            </View>
+          ) : null}
+          {flow === 'sign-in' ? (
             <View style={styles.links}>
               <Pressable
                 accessibilityRole="button"
@@ -351,7 +432,12 @@ export function AuthFlowScreen({ flow }: { flow: Flow }) {
 
 const styles = StyleSheet.create({
   root: { backgroundColor: colors.paper, flex: 1 },
-  content: { gap: spacing.md, padding: spacing.md, paddingBottom: spacing.xxl },
+  content: {
+    gap: layoutMetrics.contentGap,
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: layoutMetrics.pageTop,
+  },
   back: {
     alignItems: 'center',
     borderColor: colors.ink,
@@ -362,11 +448,9 @@ const styles = StyleSheet.create({
     width: 44,
   },
   heading: { marginTop: spacing.lg },
-  eyebrow: {
-    color: colors.pressRed,
-    fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
-    letterSpacing: 1.5,
+  brandMark: {
+    height: 48,
+    width: 42,
   },
   title: {
     color: colors.ink,
@@ -401,6 +485,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   disabled: { opacity: 0.55 },
+  pressed: { opacity: 0.82, transform: [{ scale: 0.98 }] },
   primaryText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
@@ -426,6 +511,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'space-between',
+  },
+  quickSignIn: { gap: spacing.sm },
+  divider: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  dividerLine: { flex: 1, height: 1 },
+  dividerLabel: {
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 10,
+    letterSpacing: 1.5,
+    textTransform: 'uppercase',
+  },
+  quickButton: {
+    alignItems: 'center',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 52,
+    paddingHorizontal: spacing.md,
+  },
+  quickButtonText: {
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 16,
+  },
+  quickHint: {
+    fontFamily: fontFamilies.body,
+    fontSize: 11,
+    textAlign: 'center',
   },
   link: {
     color: colors.pressRed,

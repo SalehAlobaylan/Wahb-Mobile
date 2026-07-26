@@ -6,22 +6,31 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+} from '@/design/tokens';
+import { useWahbTheme } from '@/design/theme';
+import { goBackOrReplace } from '@/core/navigation/go-back';
 
 import { useAuth } from './auth-provider';
 
 export function DeleteAccountScreen() {
   const { t } = useTranslation();
   const auth = useAuth();
+  const { theme } = useWahbTheme();
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,20 +56,21 @@ export function DeleteAccountScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: 'padding', default: undefined })}
         style={styles.keyboard}
       >
         <ScrollView
           contentContainerStyle={styles.content}
+          contentInsetAdjustmentBehavior="automatic"
           keyboardShouldPersistTaps="handled"
         >
           <Pressable
             accessibilityLabel={t('auth.back')}
             accessibilityRole="button"
             disabled={isSubmitting}
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace('/account')}
             style={styles.back}
           >
             <ArrowLeft color={colors.ink} size={22} />
@@ -129,7 +139,12 @@ export function DeleteAccountScreen() {
 const styles = StyleSheet.create({
   root: { backgroundColor: colors.paper, flex: 1 },
   keyboard: { flex: 1 },
-  content: { gap: spacing.lg, padding: spacing.md, paddingBottom: spacing.xxl },
+  content: {
+    gap: layoutMetrics.sectionGap,
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: layoutMetrics.pageTop,
+  },
   back: {
     alignItems: 'center',
     borderColor: colors.ink,

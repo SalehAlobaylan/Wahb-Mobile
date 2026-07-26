@@ -12,6 +12,19 @@ jest.mock('lucide-react-native', () => {
   );
 });
 
+// Loading the native Sentry package starts an internal cleanup interval even
+// when diagnostics are disabled. Unit tests exercise Wahb's redaction and
+// event boundaries, not Sentry's SDK internals, so keep that native timer out
+// of the hermetic Jest runtime.
+jest.mock('@sentry/react-native', () => ({
+  captureMessage: jest.fn(),
+  init: jest.fn(),
+  setTag: jest.fn(),
+  withScope: (
+    callback: (scope: { setContext: jest.Mock; setTag: jest.Mock }) => void,
+  ) => callback({ setContext: jest.fn(), setTag: jest.fn() }),
+}));
+
 /**
  * Unit and rendered-component tests must be hermetic. API tests inject a
  * transport fetch implementation explicitly; any unmocked request is a test

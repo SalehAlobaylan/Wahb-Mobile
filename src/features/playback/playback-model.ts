@@ -39,6 +39,18 @@ export const defaultPlaybackRates: PlaybackRateDefaults = {
   audio_chapter: 1,
 };
 
+export function clampPlaybackPosition(
+  seconds: number,
+  durationSeconds: number,
+): number {
+  if (!Number.isFinite(seconds)) return 0;
+  const normalizedDuration =
+    Number.isFinite(durationSeconds) && durationSeconds > 0
+      ? durationSeconds
+      : 0;
+  return Math.min(normalizedDuration, Math.max(0, seconds));
+}
+
 export function resolvePlaybackKind(source: PlaybackSource): PlaybackKind {
   return source.hasVideo ? 'video' : 'audio';
 }

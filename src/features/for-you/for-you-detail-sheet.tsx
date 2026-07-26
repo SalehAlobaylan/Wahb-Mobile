@@ -1,56 +1,60 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { hapticLightImpact, hapticSelection } from '@/core/haptics/feedback';
-import { useMemo, useState, type ReactNode } from 'react';
+import { hapticSelection } from '@/core/haptics/feedback';
+import {
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import {
   ActivityIndicator,
-  Modal,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { MessageCircle, FileText, Info, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 import type { ForYouItem } from '@/core/api';
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  fontFamilies,
+  radii,
+  spacing,
+  typeScale,
+} from '@/design/tokens';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { ReportSheet } from '@/features/moderation/report-sheet';
-import { useReducedMotion } from '@/core/ui/use-reduced-motion';
-
-import { detailSheetIntentForPan } from './detail-sheet-intents';
+import {
+  DraggableBottomSheet,
+  type DraggableBottomSheetHandle,
+} from '@/components/feed/draggable-bottom-sheet';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
+export type ForYouDetailSheetHandle = { open: (tab: DetailTab) => void };
 
 type ForYouDetailSheetProps = {
   item: ForYouItem;
   installationId: string;
-  initialTab: DetailTab;
-  visible: boolean;
-  onClose: () => void;
+  collapsedContent: ReactNode;
 };
 
-export function ForYouDetailSheet({
-  item,
-  installationId,
-  initialTab,
-  visible,
-  onClose,
-}: ForYouDetailSheetProps) {
+export const ForYouDetailSheet = forwardRef<
+  ForYouDetailSheetHandle,
+  ForYouDetailSheetProps
+>(function ForYouDetailSheet({ item, installationId, collapsedContent }, ref) {
   const { t } = useTranslation();
   const router = useRouter();
   const { clients, subject } = useAuth();
   const outbox = useOutbox();
-  const reducedMotion = useReducedMotion();
-  const { height: windowHeight } = useWindowDimensions();
-  const [tab, setTab] = useState<DetailTab>(initialTab);
-  const [expanded, setExpanded] = useState(initialTab === 'transcript');
+  const sheetRef = useRef<DraggableBottomSheetHandle>(null);
+  const [tab, setTab] = useState<DetailTab>('comments');
   const [commentDraft, setCommentDraft] = useState('');
   const [reportCommentId, setReportCommentId] = useState<string | null>(null);
   const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(
@@ -66,27 +70,12 @@ export function ForYouDetailSheet({
     setTab(nextTab);
     hapticSelection();
   };
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gesture) =>
-          Math.abs(gesture.dy) > 8 &&
-          Math.abs(gesture.dy) > Math.abs(gesture.dx),
-        onPanResponderRelease: (_, gesture) => {
-          const intent = detailSheetIntentForPan(gesture.dy, expanded);
-          if (intent === 'close') {
-            onClose();
-          } else if (intent === 'expand') {
-            setExpanded(true);
-            hapticLightImpact();
-          } else if (intent === 'collapse') {
-            setExpanded(false);
-            hapticLightImpact();
-          }
-        },
-      }),
-    [expanded, onClose],
-  );
+  useImperativeHandle(ref, () => ({
+    open: (nextTab) => {
+      setTab(nextTab);
+      sheetRef.current?.expand();
+    },
+  }));
   const commentsQuery = useInfiniteQuery({
     queryKey: ['content-comments', item.id, installationId, subject?.id],
     initialPageParam: null as string | null,
@@ -99,7 +88,7 @@ export function ForYouDetailSheet({
         signal,
       }),
     getNextPageParam: (page) => page.cursor,
-    enabled: visible && tab === 'comments',
+    enabled: tab === 'comments',
   });
   const submitComment = async () => {
     const text = commentDraft.trim();
@@ -145,103 +134,88 @@ export function ForYouDetailSheet({
   const transcriptQuery = useQuery({
     queryKey: ['transcript', item.transcript_id],
     queryFn: () => clients.cms.getTranscript(item.transcript_id!),
-    enabled: visible && tab === 'transcript' && Boolean(item.transcript_id),
+    enabled: tab === 'transcript' && Boolean(item.transcript_id),
   });
 
-  const sheetHeight = expanded
-    ? Math.min(Math.round(windowHeight * 0.78), 680)
-    : Math.min(Math.round(windowHeight * 0.48), 390);
-
   return (
-    <Modal
-      animationType={reducedMotion ? 'none' : 'slide'}
-      onRequestClose={onClose}
-      transparent
-      visible={visible}
-    >
-      <View style={styles.modalRoot}>
-        <Pressable
-          accessibilityLabel={t('foryou.closeDetails')}
-          accessibilityRole="button"
-          onPress={onClose}
-          style={styles.scrim}
-        />
-        <View style={[styles.sheet, { height: sheetHeight }]}>
-          <View
-            accessibilityHint={t('foryou.sheetGestureHint')}
-            accessibilityLabel={t('foryou.sheetHandle')}
-            accessibilityRole="adjustable"
-            {...panResponder.panHandlers}
-            style={styles.handleRegion}
-          >
-            <View style={styles.handle} />
-          </View>
-          <View style={styles.sheetHeader}>
-            <Text numberOfLines={1} style={styles.sheetTitle}>
-              {item.title}
-            </Text>
-            <Pressable
-              accessibilityLabel={t('foryou.closeDetails')}
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={onClose}
-              style={styles.closeButton}
+    <>
+      <DraggableBottomSheet
+        ref={sheetRef}
+        expandedContent={
+          <View style={styles.panel}>
+            <View style={styles.sheetHeader}>
+              <Text numberOfLines={1} style={styles.sheetTitle}>
+                {item.title}
+              </Text>
+              <Pressable
+                accessibilityLabel={t('foryou.closeDetails')}
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => sheetRef.current?.collapse()}
+                style={styles.closeButton}
+              >
+                <X color={colors.ink} size={20} />
+              </Pressable>
+            </View>
+            <View style={styles.tabs}>
+              <SheetTabButton
+                active={tab === 'comments'}
+                icon={<MessageCircle size={16} />}
+                label={t('foryou.comments')}
+                onPress={() => selectTab('comments')}
+              />
+              <SheetTabButton
+                active={tab === 'transcript'}
+                icon={<FileText size={16} />}
+                label={t('foryou.transcript')}
+                onPress={() => selectTab('transcript')}
+              />
+              <SheetTabButton
+                active={tab === 'about'}
+                icon={<Info size={16} />}
+                label={t('foryou.about')}
+                onPress={() => selectTab('about')}
+              />
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.panelContent}
+              style={styles.panelScroll}
             >
-              <X color={colors.ink} size={20} />
-            </Pressable>
+              {tab === 'comments' ? (
+                <CommentsPanel
+                  isError={commentsQuery.isError}
+                  isLoading={commentsQuery.isPending}
+                  isLoadingMore={commentsQuery.isFetchingNextPage}
+                  hasMore={commentsQuery.hasNextPage}
+                  canComment={Boolean(subject)}
+                  draft={commentDraft}
+                  onChangeDraft={setCommentDraft}
+                  onBlock={blockAuthor}
+                  onDelete={deleteComment}
+                  onReport={(commentId) => setReportCommentId(commentId)}
+                  onLoadMore={() => void commentsQuery.fetchNextPage()}
+                  onRetry={() => void commentsQuery.refetch()}
+                  onSubmit={() => void submitComment()}
+                  comments={visibleComments}
+                />
+              ) : null}
+              {tab === 'transcript' ? (
+                <TranscriptPanel
+                  hasTranscript={Boolean(item.transcript_id)}
+                  isError={transcriptQuery.isError}
+                  isLoading={transcriptQuery.isLoading}
+                  onRetry={() => void transcriptQuery.refetch()}
+                  text={transcriptQuery.data?.full_text}
+                />
+              ) : null}
+              {tab === 'about' ? <AboutPanel item={item} /> : null}
+            </ScrollView>
           </View>
-          <View style={styles.tabs}>
-            <SheetTabButton
-              active={tab === 'comments'}
-              icon={<MessageCircle size={16} />}
-              label={t('foryou.comments')}
-              onPress={() => selectTab('comments')}
-            />
-            <SheetTabButton
-              active={tab === 'transcript'}
-              icon={<FileText size={16} />}
-              label={t('foryou.transcript')}
-              onPress={() => selectTab('transcript')}
-            />
-            <SheetTabButton
-              active={tab === 'about'}
-              icon={<Info size={16} />}
-              label={t('foryou.about')}
-              onPress={() => selectTab('about')}
-            />
-          </View>
-          <ScrollView contentContainerStyle={styles.panelContent}>
-            {tab === 'comments' ? (
-              <CommentsPanel
-                isError={commentsQuery.isError}
-                isLoading={commentsQuery.isPending}
-                isLoadingMore={commentsQuery.isFetchingNextPage}
-                hasMore={commentsQuery.hasNextPage}
-                canComment={Boolean(subject)}
-                draft={commentDraft}
-                onChangeDraft={setCommentDraft}
-                onBlock={blockAuthor}
-                onDelete={deleteComment}
-                onReport={(commentId) => setReportCommentId(commentId)}
-                onLoadMore={() => void commentsQuery.fetchNextPage()}
-                onRetry={() => void commentsQuery.refetch()}
-                onSubmit={() => void submitComment()}
-                comments={visibleComments}
-              />
-            ) : null}
-            {tab === 'transcript' ? (
-              <TranscriptPanel
-                hasTranscript={Boolean(item.transcript_id)}
-                isError={transcriptQuery.isError}
-                isLoading={transcriptQuery.isLoading}
-                onRetry={() => void transcriptQuery.refetch()}
-                text={transcriptQuery.data?.full_text}
-              />
-            ) : null}
-            {tab === 'about' ? <AboutPanel item={item} /> : null}
-          </ScrollView>
-        </View>
-      </View>
+        }
+        testID="for-you-bottom-sheet"
+      >
+        {collapsedContent}
+      </DraggableBottomSheet>
       <ReportSheet
         onClose={() => setReportCommentId(null)}
         onReported={() => {
@@ -256,9 +230,9 @@ export function ForYouDetailSheet({
         }
         visible={Boolean(reportCommentId)}
       />
-    </Modal>
+    </>
   );
-}
+});
 
 function SheetTabButton({
   active,
@@ -508,8 +482,13 @@ function formatDuration(durationSeconds: number): string {
 }
 
 const styles = StyleSheet.create({
-  modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(0,0,0,0.48)' },
+  panel: { flex: 1 },
+  panelScroll: { flex: 1, minHeight: 0 },
+  modalRoot: {
+    ...StyleSheet.absoluteFill,
+    justifyContent: 'flex-end',
+    zIndex: 40,
+  },
   sheet: {
     backgroundColor: colors.paper,
     borderColor: colors.ink,
@@ -535,7 +514,7 @@ const styles = StyleSheet.create({
     color: colors.ink,
     flex: 1,
     fontFamily: fontFamilies.editorial,
-    fontSize: 20,
+    ...typeScale.heading,
   },
   closeButton: {
     alignItems: 'center',
@@ -561,7 +540,7 @@ const styles = StyleSheet.create({
   tabText: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
+    ...typeScale.meta,
   },
   tabTextActive: { color: colors.ink },
   panelContent: { flexGrow: 1, padding: spacing.md },
@@ -595,25 +574,24 @@ const styles = StyleSheet.create({
   commentSubmitText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 13,
+    ...typeScale.meta,
   },
   commentTopline: { flexDirection: 'row', justifyContent: 'space-between' },
   commentActions: { flexDirection: 'row', gap: spacing.sm },
   commentDelete: {
     color: colors.pressRed,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
+    ...typeScale.meta,
   },
   commentAuthor: {
     color: colors.ink,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 13,
+    ...typeScale.meta,
   },
   commentText: {
     color: colors.ink,
     fontFamily: fontFamilies.body,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typeScale.body,
   },
   loadMore: {
     alignItems: 'center',
@@ -632,27 +610,24 @@ const styles = StyleSheet.create({
   emptyText: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.body,
-    fontSize: 15,
-    lineHeight: 22,
+    ...typeScale.body,
     textAlign: 'center',
   },
   transcriptText: {
     color: colors.ink,
     fontFamily: fontFamilies.body,
-    fontSize: 16,
-    lineHeight: 27,
+    ...typeScale.bodyLarge,
   },
   aboutLabel: {
     color: colors.pressRed,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
+    ...typeScale.meta,
     letterSpacing: 1.2,
   },
   aboutText: {
     color: colors.ink,
     fontFamily: fontFamilies.body,
-    fontSize: 16,
-    lineHeight: 23,
+    ...typeScale.bodyLarge,
   },
   retryPanel: { alignItems: 'center', gap: spacing.sm },
   retryButton: {
@@ -666,7 +641,7 @@ const styles = StyleSheet.create({
   retryText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 14,
+    ...typeScale.body,
   },
   pressed: { opacity: 0.7 },
 });

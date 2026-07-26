@@ -1,5 +1,4 @@
 import { I18nManager } from 'react-native';
-import { getLocales } from 'expo-localization';
 import Storage from 'expo-sqlite/kv-store';
 
 import i18n from '@/core/i18n';
@@ -15,14 +14,9 @@ export type LanguagePreferences = {
 const key = 'language-preferences-v1';
 
 export function defaultLanguagePreferences(): LanguagePreferences {
-  const locale = getLocales()[0];
-  const uiLanguage: UiLanguage = locale?.languageCode === 'ar' ? 'ar' : 'en';
-  // Arabic is the Arabic-content default. Saudi launch users in another UI
-  // locale get both languages; that remains a delivery preference, not an
-  // inferred interest or a local-feed filter.
-  const contentLanguage: ContentLanguage =
-    locale?.languageCode === 'ar' ? 'ar' : 'both';
-  return { uiLanguage, contentLanguage };
+  // Arabic-first is intentional for the Saudi launch. Settings remains the
+  // durable, explicit source of truth once a user makes a choice.
+  return { uiLanguage: 'ar', contentLanguage: 'ar' };
 }
 
 function normalize(value: unknown): LanguagePreferences {

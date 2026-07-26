@@ -14,6 +14,8 @@ export type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   query?: Record<string, QueryValue>;
   body?: unknown;
+  /** Multipart requests must omit Content-Type so fetch supplies its boundary. */
+  formData?: FormData;
   authenticated?: boolean;
   /**
    * A stable key for a mutating request that may be replayed by the durable
@@ -133,9 +135,11 @@ export function createTransport(options: TransportOptions): Transport {
         const response = await fetchImplementation(url, {
           method,
           headers,
-          ...(requestOptions.body === undefined
-            ? {}
-            : { body: JSON.stringify(requestOptions.body) }),
+          ...(requestOptions.formData
+            ? { body: requestOptions.formData }
+            : requestOptions.body === undefined
+              ? {}
+              : { body: JSON.stringify(requestOptions.body) }),
           signal: requestSignal.signal,
         });
 

@@ -7,7 +7,10 @@ import {
   forYouFeedResponseSchema,
   forYouSessionResponseSchema,
   forYouSessionFreshnessResponseSchema,
+  iamProfileSchema,
   newsFeedResponseSchema,
+  myContentResponseSchema,
+  profileStatsResponseSchema,
   transcriptResponseSchema,
 } from './schemas';
 
@@ -27,6 +30,22 @@ const validItem = {
   is_bookmarked: false,
   is_archived: false,
 };
+
+describe('IAM profile contract schema', () => {
+  it('accepts the RFC 3339 numeric timezone offsets emitted by IAM', () => {
+    expect(
+      iamProfileSchema.parse({
+        id: '4f34066e-9899-4a78-9d79-6dc278151f00',
+        username: 'admin',
+        email: 'admin@gmail.com',
+        tenant_id: 'default',
+        email_verified: true,
+        created_at: '2026-04-21T14:22:21.639831+03:00',
+        updated_at: '2026-04-21T15:00:27.360843+03:00',
+      }),
+    ).toMatchObject({ username: 'admin' });
+  });
+});
 
 describe('For You contract schema', () => {
   it('normalizes CMS playback metadata into the native discriminated source', () => {
@@ -208,5 +227,42 @@ describe('IAM contract schemas', () => {
 
     expect(parsed.verification_delivery).toBe('pending');
     expect(parsed).not.toHaveProperty('refresh_token');
+  });
+});
+
+describe('Profile contract schemas', () => {
+  it('parses profile statistics and additive creation playback metadata', () => {
+    expect(
+      profileStatsResponseSchema.parse({
+        saved: 12,
+        likes: 6,
+        listened: 3,
+        created: 2,
+      }),
+    ).toMatchObject({ saved: 12, likes: 6, listened: 3, created: 2 });
+
+    const parsed = myContentResponseSchema.parse({
+      cursor: null,
+      items: [
+        {
+          id: validItem.id,
+          type: 'VIDEO',
+          status: 'READY',
+          title: 'My video',
+          like_count: 0,
+          comment_count: 0,
+          playback_url: 'https://media.example.test/my-video.m3u8',
+          playback_type: 'hls',
+          has_video: true,
+        },
+      ],
+    });
+
+    expect(parsed.items[0]).toMatchObject({
+      type: 'VIDEO',
+      status: 'READY',
+      playback_type: 'hls',
+      has_video: true,
+    });
   });
 });

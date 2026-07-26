@@ -9,6 +9,12 @@ appId: com.salehspace.wahb
     id: 'account-saved'
 - assertVisible: 'Saved'
 - takeScreenshot: 'saved-library'
+- tapOn:
+    id: 'saved-feed-news'
+- tapOn:
+    id: 'saved-search'
+- inputText: 'news'
+- hideKeyboard
 - back
 - tapOn:
     id: 'account-settings'

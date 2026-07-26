@@ -7,6 +7,10 @@ const easProjectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
 if (easProjectId && !/^[0-9a-f-]{36}$/i.test(easProjectId)) {
   throw new Error('EXPO_PUBLIC_EAS_PROJECT_ID must be an EAS UUID.');
 }
+const appleTeamId = process.env.EXPO_IOS_APPLE_TEAM_ID?.trim();
+if (appleTeamId && !/^[A-Z0-9]{10}$/.test(appleTeamId)) {
+  throw new Error('EXPO_IOS_APPLE_TEAM_ID must be a 10-character team ID.');
+}
 
 const config: ExpoConfig = {
   name: 'Wahb',
@@ -20,13 +24,14 @@ const config: ExpoConfig = {
   },
   platforms: ['ios', 'android'],
   orientation: 'portrait',
-  icon: './assets/brand/wahb-logo-circle-red.png',
+  icon: './assets/brand/wahb_app_icon.png',
   scheme: 'wahb',
   userInterfaceStyle: 'automatic',
   ios: {
     supportsTablet: false,
     bundleIdentifier: 'com.salehspace.wahb',
     buildNumber: '1',
+    ...(appleTeamId ? { appleTeamId } : {}),
     config: {
       // Wahb uses only platform-exempt transport encryption; no proprietary
       // encryption implementation ships in the app.
@@ -83,8 +88,9 @@ const config: ExpoConfig = {
     ],
     adaptiveIcon: {
       backgroundColor: '#f8f5f2',
-      foregroundImage: './assets/brand/wahb-logo-circle-red.png',
-      monochromeImage: './assets/brand/wahb-logo-circle.png',
+      // The safe variant leaves Android's adaptive-icon mask room without
+      // reducing the visual mark inside the final launcher icon.
+      foregroundImage: './assets/brand/wahb_app_icon_safe.png',
     },
     predictiveBackGestureEnabled: true,
     intentFilters: [
@@ -114,6 +120,14 @@ const config: ExpoConfig = {
     'expo-secure-store',
     'expo-sqlite',
     [
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Allow Wahb to access a photo when you choose a profile picture.',
+        cameraPermission: 'Allow Wahb to take a profile picture.',
+      },
+    ],
+    [
       '@sentry/react-native',
       {
         // Build-only values. The plugin falls back to these same environment
@@ -123,6 +137,7 @@ const config: ExpoConfig = {
         project: process.env.SENTRY_PROJECT,
       },
     ],
+    './plugins/with-ios-local-development',
     [
       'expo-audio',
       {
@@ -143,11 +158,11 @@ const config: ExpoConfig = {
       'expo-splash-screen',
       {
         backgroundColor: '#f8f5f2',
-        image: './assets/brand/wahb-wordmark.png',
-        imageWidth: 180,
+        image: './assets/brand/wahb_mark_transparent.png',
+        imageWidth: 84,
         dark: {
           backgroundColor: '#1a1a1a',
-          image: './assets/brand/wahb-wordmark-light.png',
+          image: './assets/brand/wahb_mark_transparent_dark.png',
         },
       },
     ],

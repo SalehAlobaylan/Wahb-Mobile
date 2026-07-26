@@ -1,7 +1,7 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
-import { describe, expect, it, jest } from '@jest/globals';
+import { fireEvent, render } from '@testing-library/react-native';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import '@/core/i18n';
+import i18n from '@/core/i18n';
 
 import { ReportSheet } from './report-sheet';
 
@@ -18,6 +18,10 @@ const mockUseOutbox = mockOutboxProvider.useOutbox;
 const mockEnqueue = jest.fn();
 
 describe('ReportSheet', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('queues a selected report for an anonymous installation', async () => {
     mockUseOutbox.mockReturnValue({ enqueue: mockEnqueue });
     const onClose = jest.fn();
@@ -29,12 +33,8 @@ describe('ReportSheet', () => {
       />,
     );
 
-    await act(async () => {
-      fireEvent.press(view.getByRole('radio', { name: 'Misinformation' }));
-    });
-    await act(async () => {
-      fireEvent.press(view.getByRole('button', { name: 'Send report' }));
-    });
+    await fireEvent.press(view.getByRole('radio', { name: 'Misinformation' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Send report' }));
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(mockEnqueue).toHaveBeenCalledWith({
@@ -56,12 +56,8 @@ describe('ReportSheet', () => {
       />,
     );
 
-    await act(async () => {
-      fireEvent.press(view.getByRole('radio', { name: 'Misinformation' }));
-    });
-    await act(async () => {
-      fireEvent.press(view.getByRole('button', { name: 'Send report' }));
-    });
+    await fireEvent.press(view.getByRole('radio', { name: 'Misinformation' }));
+    await fireEvent.press(view.getByRole('button', { name: 'Send report' }));
 
     expect(mockEnqueue).toHaveBeenCalledWith({
       reason: 'misinformation',

@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { describe, expect, it, jest } from '@jest/globals';
 
 import '@/core/i18n';
@@ -28,6 +28,7 @@ const mockResetLocalData = jest.fn();
 
 describe('AccountScreen', () => {
   it('gives every authenticated account route a truthful unique selector', async () => {
+    mockRouter.push.mockClear();
     mockUseAuth.mockReturnValue({
       ...verifiedUserSession(),
       logout: mockLogout,
@@ -36,14 +37,12 @@ describe('AccountScreen', () => {
 
     const view = await render(<AccountScreen />);
 
-    await act(async () => {
-      fireEvent.press(view.getByTestId('account-profile'));
-      fireEvent.press(view.getByTestId('account-interests'));
-      fireEvent.press(view.getByTestId('account-saved'));
-      fireEvent.press(view.getByTestId('account-history'));
-      fireEvent.press(view.getByTestId('account-settings'));
-      fireEvent.press(view.getByTestId('account-delete'));
-    });
+    await fireEvent.press(view.getByTestId('account-profile'));
+    await fireEvent.press(view.getByTestId('account-interests'));
+    await fireEvent.press(view.getByTestId('account-saved'));
+    await fireEvent.press(view.getByTestId('account-history'));
+    await fireEvent.press(view.getByTestId('account-settings'));
+    await fireEvent.press(view.getByTestId('account-delete'));
 
     expect(mockRouter.push).toHaveBeenNthCalledWith(1, '/profile');
     expect(mockRouter.push).toHaveBeenNthCalledWith(2, '/interests');

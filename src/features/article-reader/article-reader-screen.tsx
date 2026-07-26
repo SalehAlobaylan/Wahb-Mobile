@@ -1,20 +1,19 @@
 import { Image } from 'expo-image';
 import * as WebBrowser from 'expo-web-browser';
 import { useQuery } from '@tanstack/react-query';
-import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   Bookmark,
@@ -35,7 +34,18 @@ import { identityScope as toIdentityScope } from '@/core/identity/identity-scope
 import { useAuth } from '@/features/auth/auth-provider';
 import { NewsNowPlayingTile } from '@/features/news/news-now-playing-tile';
 import { ReportSheet } from '@/features/moderation/report-sheet';
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+  typeScale,
+} from '@/design/tokens';
+import { useWahbTheme } from '@/design/theme';
+import { useWahbTypography } from '@/design/typography';
+import { goBackOrReplace } from '@/core/navigation/go-back';
+import { getArticleCoverageContext } from './article-coverage-context';
 
 import {
   loadArticleSnapshot,
@@ -99,6 +109,8 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const outbox = useOutbox();
   const reducedMotion = useReducedMotion();
   const { clients, subject } = useAuth();
+  const { theme } = useWahbTheme();
+  const { font } = useWahbTypography();
   const scrollRef = useRef<ScrollView>(null);
   const positionRef = useRef(0);
   const lastPersistAt = useRef(0);
@@ -256,15 +268,26 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
 
   if (query.isPending) {
     return (
-      <SafeAreaView style={styles.state}>
+      <SafeAreaView
+        style={[styles.state, { backgroundColor: theme.background }]}
+      >
         <ActivityIndicator color={colors.pressRed} />
       </SafeAreaView>
     );
   }
   if (!query.data) {
     return (
-      <SafeAreaView style={styles.state}>
-        <Text style={styles.unavailable}>{t('article.unavailable')}</Text>
+      <SafeAreaView
+        style={[styles.state, { backgroundColor: theme.background }]}
+      >
+        <Text
+          style={[
+            styles.unavailable,
+            { color: theme.foreground, fontFamily: font('editorial') },
+          ]}
+        >
+          {t('article.unavailable')}
+        </Text>
       </SafeAreaView>
     );
   }
@@ -285,11 +308,13 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const body =
     article.translated_body_text || article.body_text || article.excerpt || '';
   const publishedAt = formatPublishedAt(article.published_at);
+  const coverage = getArticleCoverageContext(id);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <ScrollView
         contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
         onMomentumScrollEnd={(event) =>
           persistPosition(event.nativeEvent.contentOffset.y, true)
         }
@@ -301,10 +326,10 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           <Pressable
             accessibilityLabel={t('article.back')}
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace('/news')}
             style={styles.iconButton}
           >
-            <ArrowLeft color={colors.ink} size={22} />
+            <ArrowLeft color={theme.foreground} size={22} />
           </Pressable>
           <View style={styles.actions}>
             <NewsNowPlayingTile />
@@ -317,8 +342,8 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
               style={styles.iconButton}
             >
               <Bookmark
-                color={colors.ink}
-                fill={isBookmarked ? colors.ink : 'transparent'}
+                color={theme.foreground}
+                fill={isBookmarked ? theme.foreground : 'transparent'}
                 size={20}
               />
             </Pressable>
@@ -328,7 +353,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
               onPress={() => void shareArticle()}
               style={styles.iconButton}
             >
-              <Share2 color={colors.ink} size={20} />
+              <Share2 color={theme.foreground} size={20} />
             </Pressable>
             <Pressable
               accessibilityLabel={t('moderation.report')}
@@ -336,12 +361,23 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
               onPress={() => setIsReportVisible(true)}
               style={styles.iconButton}
             >
-              <Flag color={colors.ink} size={20} />
+              <Flag color={theme.foreground} size={20} />
             </Pressable>
           </View>
         </View>
         {query.data.source === 'offline-cache' ? (
-          <Text accessibilityLiveRegion="polite" style={styles.offline}>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.offline,
+              {
+                backgroundColor: theme.muted,
+                borderColor: theme.border,
+                color: theme.foreground,
+                fontFamily: font('bold'),
+              },
+            ]}
+          >
             {t('article.offlineCopy')}
           </Text>
         ) : null}
@@ -353,15 +389,32 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           />
         ) : null}
         {isTranslated ? (
-          <Text style={styles.translation}>
+          <Text
+            style={[
+              styles.translation,
+              { color: theme.accent, fontFamily: font('bold') },
+            ]}
+          >
             {t('article.translationLabel', {
               language:
                 article.translation_language || t('article.translationUnknown'),
             })}
           </Text>
         ) : null}
-        <Text style={styles.title}>{title}</Text>
-        <Text style={styles.meta}>
+        <Text
+          style={[
+            styles.title,
+            { color: theme.foreground, fontFamily: font('editorial') },
+          ]}
+        >
+          {title}
+        </Text>
+        <Text
+          style={[
+            styles.meta,
+            { color: theme.mutedForeground, fontFamily: font('mono') },
+          ]}
+        >
           {[
             article.source_name,
             publishedAt,
@@ -376,8 +429,13 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
             onPress={requestOriginalSource}
             style={styles.sourceButton}
           >
-            <ExternalLink color={colors.pressRed} size={17} />
-            <Text style={styles.sourceButtonLabel}>
+            <ExternalLink color={theme.accent} size={17} />
+            <Text
+              style={[
+                styles.sourceButtonLabel,
+                { color: theme.foreground, fontFamily: font('bold') },
+              ]}
+            >
               {t('article.originalSource')}
             </Text>
           </Pressable>
@@ -388,11 +446,63 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           .map((paragraph, index) => (
             <Text
               key={`${index}-${paragraph.slice(0, 16)}`}
-              style={styles.body}
+              style={[
+                styles.body,
+                { color: theme.foreground, fontFamily: font('body') },
+              ]}
             >
               {paragraph}
             </Text>
           ))}
+        {coverage?.members.length ? (
+          <View style={[styles.coverage, { borderTopColor: theme.border }]}>
+            <Text
+              style={[
+                styles.coverageLabel,
+                { color: theme.accent, fontFamily: font('bold') },
+              ]}
+            >
+              {t('news.coveredBy', { count: coverage.members.length })}
+            </Text>
+            {coverage.members
+              .filter((member) => member.id !== article.id)
+              .slice(0, 3)
+              .map((member) => (
+                <View
+                  key={member.id}
+                  style={[
+                    styles.coverageCard,
+                    { backgroundColor: theme.card, borderColor: theme.border },
+                  ]}
+                >
+                  <Text
+                    numberOfLines={2}
+                    style={[
+                      styles.coverageTitle,
+                      {
+                        color: theme.foreground,
+                        fontFamily: font('editorial'),
+                      },
+                    ]}
+                  >
+                    {member.title || member.source_name}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.coverageSource,
+                      {
+                        color: theme.mutedForeground,
+                        fontFamily: font('mono'),
+                      },
+                    ]}
+                  >
+                    {member.source_name}
+                  </Text>
+                </View>
+              ))}
+          </View>
+        ) : null}
       </ScrollView>
       <Modal
         animationType={reducedMotion ? 'none' : 'fade'}
@@ -448,7 +558,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
           setIsReportVisible(false);
           // Reporting removes this article from the active reader immediately;
           // its independent History record remains intact.
-          router.back();
+          goBackOrReplace('/news');
         }}
         target={isReportVisible ? { id: article.id, type: 'content' } : null}
         visible={isReportVisible}
@@ -469,10 +579,14 @@ const styles = StyleSheet.create({
   unavailable: {
     color: colors.ink,
     fontFamily: fontFamilies.editorial,
-    fontSize: 24,
+    ...typeScale.featureTitle,
     textAlign: 'center',
   },
-  content: { padding: spacing.md, paddingBottom: spacing.xxl },
+  content: {
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: layoutMetrics.pageTop,
+  },
   topRow: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -494,7 +608,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     color: colors.ink,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 13,
+    ...typeScale.meta,
     marginTop: spacing.md,
     padding: spacing.sm,
   },
@@ -507,22 +621,20 @@ const styles = StyleSheet.create({
   translation: {
     color: colors.pressRed,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
+    ...typeScale.meta,
     marginTop: spacing.md,
     textTransform: 'uppercase',
   },
   title: {
     color: colors.ink,
     fontFamily: fontFamilies.editorial,
-    fontSize: 32,
-    lineHeight: 39,
+    ...typeScale.readerTitle,
     marginTop: spacing.md,
   },
   meta: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.mono,
-    fontSize: 12,
-    lineHeight: 18,
+    ...typeScale.meta,
     marginTop: spacing.sm,
   },
   sourceButton: {
@@ -540,15 +652,33 @@ const styles = StyleSheet.create({
   sourceButtonLabel: {
     color: colors.ink,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 13,
+    ...typeScale.meta,
   },
   body: {
     color: colors.ink,
     fontFamily: fontFamilies.body,
-    fontSize: 18,
-    lineHeight: 30,
+    fontSize: 16,
+    lineHeight: 26,
     marginTop: spacing.md,
   },
+  coverage: {
+    borderTopWidth: 1,
+    marginTop: spacing.xl,
+    paddingTop: spacing.md,
+  },
+  coverageLabel: {
+    ...typeScale.meta,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  coverageCard: {
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+  },
+  coverageTitle: { ...typeScale.cardTitle },
+  coverageSource: { ...typeScale.label, marginTop: 4 },
   modalRoot: { flex: 1, justifyContent: 'center', padding: spacing.lg },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(26,26,26,0.48)' },
   dialog: {
@@ -566,7 +696,7 @@ const styles = StyleSheet.create({
   dialogTitle: {
     color: colors.ink,
     fontFamily: fontFamilies.editorial,
-    fontSize: 23,
+    ...typeScale.heading,
   },
   close: {
     alignItems: 'center',
@@ -577,8 +707,7 @@ const styles = StyleSheet.create({
   dialogCopy: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.body,
-    fontSize: 16,
-    lineHeight: 23,
+    ...typeScale.bodyLarge,
     marginTop: spacing.sm,
   },
   openSource: {
@@ -593,6 +722,6 @@ const styles = StyleSheet.create({
   openSourceText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 14,
+    ...typeScale.body,
   },
 });

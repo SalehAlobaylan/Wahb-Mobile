@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  clampPlaybackPosition,
   createInitialPlaybackSnapshot,
   defaultPlaybackRates,
   isSupportedPlaybackRate,
@@ -8,6 +9,15 @@ import {
   playbackRateClassFor,
   resolvePlaybackKind,
 } from './playback-model';
+
+describe('playback position', () => {
+  it('clamps absolute seeks to the current media bounds', () => {
+    expect(clampPlaybackPosition(-4, 120)).toBe(0);
+    expect(clampPlaybackPosition(45, 120)).toBe(45);
+    expect(clampPlaybackPosition(300, 120)).toBe(120);
+    expect(clampPlaybackPosition(Number.NaN, 120)).toBe(0);
+  });
+});
 
 describe('playback model', () => {
   it('keeps video inside the video owner and uses audio only for true audio', () => {

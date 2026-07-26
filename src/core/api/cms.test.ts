@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import type { ZodType } from 'zod';
 
-import { createCmsApi } from './cms';
+import { createCmsApi, forYouSessionCreationTimeoutMs } from './cms';
 import type { RequestOptions, Transport } from './transport';
 
 describe('CMS history contract', () => {
@@ -24,6 +24,36 @@ describe('CMS history contract', () => {
       path: '/api/v1/interactions/history',
       authenticated: true,
       query: { limit: 20, session_id: 'install-history-1' },
+    });
+  });
+});
+
+describe('CMS Saved contract', () => {
+  it('keeps anonymous Saved reads device-scoped and forwards search', async () => {
+    let captured: RequestOptions | undefined;
+    const transport: Transport = {
+      request: async <T>(options: RequestOptions, schema: ZodType<T>) => {
+        captured = options;
+        return schema.parse({ cursor: null, items: [] });
+      },
+    };
+
+    await createCmsApi(transport).getSavedContent({
+      installationId: 'install-saved-1',
+      feed: 'news',
+      q: '  Riyadh  ',
+    });
+
+    expect(captured).toMatchObject({
+      path: '/api/v1/interactions/bookmarks',
+      authenticated: true,
+      query: {
+        session_id: 'install-saved-1',
+        q: 'Riyadh',
+        feed: 'news',
+        limit: 20,
+        sort: 'saved_desc',
+      },
     });
   });
 });
@@ -76,6 +106,7 @@ describe('CMS For You delivery-language contract', () => {
     expect(captured).toMatchObject({
       path: '/api/v1/feed/foryou/sessions',
       method: 'POST',
+      timeoutMs: forYouSessionCreationTimeoutMs,
       query: {
         limit: 10,
         session_id: 'install-language-1',
@@ -99,6 +130,30 @@ describe('CMS For You delivery-language contract', () => {
     });
 
     expect(captured?.query).toMatchObject({ content_language: 'both' });
+  });
+});
+
+describe('CMS For You duration contract', () => {
+  it('sends the requested duration only when creating the frozen snapshot', async () => {
+    let captured: RequestOptions | undefined;
+    const transport: Transport = {
+      request: async <T>(options: RequestOptions, schema: ZodType<T>) => {
+        captured = options;
+        return schema.parse({
+          session_id: 'b4a7e91c-9227-4c51-9fa8-9955e1e4c139',
+          cursor: null,
+          expires_at: '2026-07-22T12:00:00.000Z',
+          items: [],
+        });
+      },
+    };
+
+    await createCmsApi(transport).createForYouSession({
+      installationId: 'install-duration-1',
+      duration: 15,
+    });
+
+    expect(captured?.query).toMatchObject({ duration: 15 });
   });
 });
 

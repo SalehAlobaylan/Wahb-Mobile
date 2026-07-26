@@ -11,6 +11,9 @@ import {
   preferencesResponseSchema,
   sourcePreferenceResponseSchema,
   savedContentResponseSchema,
+  likedContentResponseSchema,
+  myContentResponseSchema,
+  profileStatsResponseSchema,
   topicPickerResponseSchema,
   articleContentResponseSchema,
   newsFeedResponseSchema,
@@ -26,11 +29,19 @@ import {
   type HistoryResponse,
   type PreferencesResponse,
   type SavedContentResponse,
+  type LikedContentResponse,
+  type MyContentResponse,
+  type ProfileStats,
   type TopicPickerResponse,
   type ModerationReason,
 } from './schemas';
 import type { Transport } from './transport';
 import { HttpError } from './errors';
+
+// Initial frozen sessions involve CMS ranking and can take longer than a
+// regular interaction request on a local development data set. Do not present
+// that normal work as an offline failure after the transport default expires.
+export const forYouSessionCreationTimeoutMs = 120_000;
 
 export type ForYouPageRequest = {
   cursor?: string;
@@ -63,11 +74,16 @@ export type CmsApi = {
   deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
   deleteComment(commentId: string, sessionId: string): Promise<void>;
   getSavedContent(request: SavedContentRequest): Promise<SavedContentResponse>;
+  getLikedContent(request: CursorRequest): Promise<LikedContentResponse>;
+  getProfileStats(signal?: AbortSignal): Promise<ProfileStats>;
+  getMyContent(request: MyContentRequest): Promise<MyContentResponse>;
   getHistory(request: HistoryRequest): Promise<HistoryResponse>;
   clearHistory(sessionId: string): Promise<void>;
   getTopicPicker(signal?: AbortSignal): Promise<TopicPickerResponse>;
   getPreferences(signal?: AbortSignal): Promise<PreferencesResponse>;
   updateDeclaredTopics(topicIds: string[]): Promise<PreferencesResponse>;
+  muteTopic(topicId: string): Promise<PreferencesResponse>;
+  unmuteTopic(topicId: string): Promise<PreferencesResponse>;
   muteSource(contentId: string): Promise<void>;
   unmuteSource(sourceKey: string): Promise<void>;
   reportModeration(request: ModerationReportRequest): Promise<void>;
@@ -104,6 +120,8 @@ export type ForYouSessionRequest = {
   limit?: number;
   signal?: AbortSignal;
   contentLanguage?: 'ar' | 'en' | 'both';
+  /** The CMS resolves this to its nearest legal For You duration bucket. */
+  duration?: 5 | 10 | 15 | 20 | 30 | 40;
 };
 
 export type ForYouSessionPageRequest = ForYouSessionRequest & {
@@ -113,7 +131,7 @@ export type ForYouSessionPageRequest = ForYouSessionRequest & {
 
 export type ForYouSessionFreshnessRequest = Pick<
   ForYouSessionRequest,
-  'installationId' | 'signal'
+  'installationId' | 'signal' | 'duration'
 > & {
   sessionId: string;
 };
@@ -131,7 +149,21 @@ export type SavedContentRequest = {
   limit?: number;
   sort?: 'saved_desc' | 'saved_asc';
   feed?: 'all' | 'foryou' | 'news';
+  /** Device identity keeps anonymous bookmarks visible before sign-in. */
+  installationId?: string;
+  /** Server-side title, source, and author search. */
+  q?: string;
   signal?: AbortSignal;
+};
+
+export type CursorRequest = {
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+};
+
+export type MyContentRequest = CursorRequest & {
+  type: 'NEWS' | 'ARTICLE' | 'VIDEO' | 'PODCAST';
 };
 
 export type HistoryRequest = {
@@ -203,6 +235,7 @@ export function createCmsApi(transport: Transport): CmsApi {
       limit = 10,
       signal,
       contentLanguage,
+      duration,
     }) {
       return transport.request(
         {
@@ -212,8 +245,10 @@ export function createCmsApi(transport: Transport): CmsApi {
             limit,
             session_id: installationId,
             ...(contentLanguage ? { content_language: contentLanguage } : {}),
+            ...(duration ? { duration } : {}),
           },
           signal,
+          timeoutMs: forYouSessionCreationTimeoutMs,
           authenticated: true,
         },
         forYouSessionResponseSchema,
@@ -240,11 +275,14 @@ export function createCmsApi(transport: Transport): CmsApi {
         forYouSessionResponseSchema,
       );
     },
-    getForYouSessionFreshness({ installationId, sessionId, signal }) {
+    getForYouSessionFreshness({ installationId, sessionId, signal, duration }) {
       return transport.request(
         {
           path: `/api/v1/feed/foryou/sessions/${sessionId}/freshness`,
-          query: { session_id: installationId },
+          query: {
+            session_id: installationId,
+            ...(duration ? { duration } : {}),
+          },
           signal,
           authenticated: true,
         },
@@ -350,16 +388,53 @@ export function createCmsApi(transport: Transport): CmsApi {
       limit = 20,
       sort = 'saved_desc',
       feed = 'all',
+      installationId,
+      q,
       signal,
     }) {
       return transport.request(
         {
           path: '/api/v1/interactions/bookmarks',
-          query: { ...(cursor ? { cursor } : {}), limit, sort, feed },
+          query: {
+            ...(cursor ? { cursor } : {}),
+            ...(installationId ? { session_id: installationId } : {}),
+            ...(q?.trim() ? { q: q.trim() } : {}),
+            limit,
+            sort,
+            feed,
+          },
           signal,
           authenticated: true,
         },
         savedContentResponseSchema,
+      );
+    },
+    getLikedContent({ cursor, limit = 20, signal }) {
+      return transport.request(
+        {
+          path: '/api/v1/interactions/likes',
+          query: { ...(cursor ? { cursor } : {}), limit },
+          signal,
+          authenticated: true,
+        },
+        likedContentResponseSchema,
+      );
+    },
+    getProfileStats(signal) {
+      return transport.request(
+        { path: '/api/v1/interactions/stats', signal, authenticated: true },
+        profileStatsResponseSchema,
+      );
+    },
+    getMyContent({ type, cursor, limit = 20, signal }) {
+      return transport.request(
+        {
+          path: '/api/v1/content/mine',
+          query: { ...(cursor ? { cursor } : {}), limit, type },
+          signal,
+          authenticated: true,
+        },
+        myContentResponseSchema,
       );
     },
     getHistory({ installationId, cursor, limit = 20, signal }) {
@@ -406,6 +481,26 @@ export function createCmsApi(transport: Transport): CmsApi {
           path: '/api/v1/preferences/topics',
           method: 'PUT',
           body: { topic_ids: topicIds },
+          authenticated: true,
+        },
+        preferencesResponseSchema,
+      );
+    },
+    muteTopic(topicId) {
+      return transport.request(
+        {
+          path: `/api/v1/preferences/topics/${topicId}/mute`,
+          method: 'POST',
+          authenticated: true,
+        },
+        preferencesResponseSchema,
+      );
+    },
+    unmuteTopic(topicId) {
+      return transport.request(
+        {
+          path: `/api/v1/preferences/topics/${topicId}/mute`,
+          method: 'DELETE',
           authenticated: true,
         },
         preferencesResponseSchema,

@@ -2,11 +2,12 @@ import { router } from 'expo-router';
 import {
   Alert,
   Pressable,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   BookMarked,
@@ -20,13 +21,24 @@ import {
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+} from '@/design/tokens';
+import { useWahbTheme } from '@/design/theme';
+import { useWahbTypography } from '@/design/typography';
+import { goBackOrReplace } from '@/core/navigation/go-back';
 
 import { useAuth } from './auth-provider';
 
 export function AccountScreen() {
   const { t } = useTranslation();
   const auth = useAuth();
+  const { theme } = useWahbTheme();
+  const { font } = useWahbTypography();
   const reset = () => {
     Alert.alert(t('account.resetTitle'), t('account.resetCopy'), [
       { style: 'cancel', text: t('account.cancel') },
@@ -40,23 +52,38 @@ export function AccountScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root}>
-      <View style={styles.content}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        contentInsetAdjustmentBehavior="automatic"
+      >
         <Pressable
           accessibilityLabel={t('auth.back')}
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/')}
           style={styles.back}
         >
-          <ArrowLeft color={colors.ink} size={22} />
+          <ArrowLeft color={theme.foreground} size={22} />
         </Pressable>
         <View style={styles.heading}>
           <UserRound color={colors.pressRed} size={30} />
-          <Text style={styles.title}>{t('account.title')}</Text>
+          <Text
+            style={[
+              styles.title,
+              { color: theme.foreground, fontFamily: font('editorial') },
+            ]}
+          >
+            {t('account.title')}
+          </Text>
         </View>
         {auth.subject ? (
           <>
-            <Text style={styles.email}>
+            <Text
+              style={[
+                styles.email,
+                { color: theme.mutedForeground, fontFamily: font('body') },
+              ]}
+            >
               {auth.subject.email || t('account.signedIn')}
             </Text>
             <Pressable
@@ -118,7 +145,14 @@ export function AccountScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.email}>{t('account.guest')}</Text>
+            <Text
+              style={[
+                styles.email,
+                { color: theme.mutedForeground, fontFamily: font('body') },
+              ]}
+            >
+              {t('account.guest')}
+            </Text>
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push('/sign-in')}
@@ -146,14 +180,19 @@ export function AccountScreen() {
           <RotateCcw color={colors.ink} size={20} />
           <Text style={styles.actionText}>{t('account.resetAction')}</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { backgroundColor: colors.paper, flex: 1 },
-  content: { gap: spacing.md, padding: spacing.md },
+  content: {
+    gap: layoutMetrics.contentGap,
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: layoutMetrics.pageTop,
+  },
   back: {
     alignItems: 'center',
     borderColor: colors.ink,

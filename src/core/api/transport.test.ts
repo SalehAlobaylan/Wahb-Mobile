@@ -60,4 +60,35 @@ describe('transport', () => {
       ),
     ).rejects.toBeInstanceOf(HttpError);
   });
+
+  it('sends raw FormData without a manually supplied multipart boundary', async () => {
+    const formData = new FormData();
+    formData.append('avatar', 'image-data');
+    const transport = createTransport({
+      baseUrl: 'https://iam.example.test',
+      getAccessToken: () => 'access-token',
+      fetchImplementation: async (_input, init) => {
+        expect(init?.body).toBe(formData);
+        expect(new Headers(init?.headers).get('Content-Type')).toBeNull();
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer access-token',
+        );
+        return new Response(JSON.stringify({ uploaded: true }), {
+          status: 200,
+        });
+      },
+    });
+
+    await expect(
+      transport.request(
+        {
+          path: '/api/v1/users/avatar',
+          method: 'POST',
+          formData,
+          authenticated: true,
+        },
+        z.object({ uploaded: z.literal(true) }),
+      ),
+    ).resolves.toEqual({ uploaded: true });
+  });
 });

@@ -73,6 +73,15 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
               await queryClient.invalidateQueries({
                 queryKey: ['saved-content'],
               });
+              await queryClient.invalidateQueries({
+                queryKey: ['profile-saved'],
+              });
+              await queryClient.invalidateQueries({
+                queryKey: ['profile-likes'],
+              });
+              await queryClient.invalidateQueries({
+                queryKey: ['profile-stats'],
+              });
               captureDiagnostic('outbox_rejected', {
                 event_type: event.type,
                 status_code: status ?? 0,

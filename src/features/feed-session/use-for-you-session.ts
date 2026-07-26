@@ -23,7 +23,19 @@ import {
   createPaginationBudget,
 } from './pagination-policy';
 
-export function useForYouSession() {
+export type ForYouDurationPreference = 5 | 10 | 15 | 20 | 30 | 40;
+
+export function forYouSessionScope(
+  identityScope: string | undefined,
+  contentLanguage: string,
+  duration?: ForYouDurationPreference,
+): string | undefined {
+  return identityScope
+    ? `${identityScope}:content-language:${contentLanguage}:duration:${duration ?? 'all'}`
+    : undefined;
+}
+
+export function useForYouSession(duration?: ForYouDurationPreference) {
   const db = useSQLiteContext();
   const queryClient = useQueryClient();
   const { clients, subject } = useAuth();
@@ -52,9 +64,11 @@ export function useForYouSession() {
   const contentLanguage = languageQuery.data?.contentLanguage ?? 'both';
   // A delivery preference changes server inventory. It therefore partitions
   // only the local frozen-session ledger, never the account/outbox identity.
-  const sessionScope = identityScope
-    ? `${identityScope}:content-language:${contentLanguage}`
-    : undefined;
+  const sessionScope = forYouSessionScope(
+    identityScope,
+    contentLanguage,
+    duration,
+  );
   const sessionQuery = useQuery<FrozenForYouSession>({
     queryKey: ['foryou-session', sessionScope],
     enabled: Boolean(
@@ -78,6 +92,7 @@ export function useForYouSession() {
           installationId,
           limit: 10,
           contentLanguage,
+          duration,
           signal,
         });
         return materializeForYouSession(
@@ -167,6 +182,7 @@ export function useForYouSession() {
       installationId,
       limit: 10,
       contentLanguage,
+      duration,
     });
     const updated = await materializeForYouSession(
       db,
@@ -179,6 +195,7 @@ export function useForYouSession() {
   }, [
     clients.cms,
     contentLanguage,
+    duration,
     db,
     installationId,
     queryClient,
@@ -197,9 +214,10 @@ export function useForYouSession() {
     const response = await clients.cms.getForYouSessionFreshness({
       installationId,
       sessionId: current.serverSessionId,
+      duration,
     });
     return response.hasNewContent;
-  }, [clients.cms, installationId, sessionQuery.data]);
+  }, [clients.cms, duration, installationId, sessionQuery.data]);
 
   const hideItem = useCallback(
     async (contentId: string): Promise<FrozenForYouSession | null> => {

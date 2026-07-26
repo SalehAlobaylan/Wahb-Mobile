@@ -1,0 +1,14 @@
+appId: com.salehspace.wahb
+---
+- launchApp:
+    clearState: false
+- assertVisible: 'FOR YOU'
+- tapOn: 'NEWS'
+- assertVisible: 'NEWS'
+- tapOn: 'NEWS'
+- assertVisible: 'Today'
+- tapOn: 'Today'
+- tapOn: 'FOR YOU'
+- tapOn:
+    id: 'for-you-playback-toggle'
+- takeScreenshot: 'ui-parity-for-you'

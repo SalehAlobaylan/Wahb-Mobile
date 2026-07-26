@@ -29,6 +29,7 @@ import {
 
 import {
   createInitialPlaybackSnapshot,
+  clampPlaybackPosition,
   defaultPlaybackRates,
   isSupportedPlaybackRate,
   playbackRateClassFor,
@@ -77,6 +78,7 @@ export type PlaybackController = PlaybackSnapshot & {
   start(item: PlaybackItem, options?: StartPlaybackOptions): Promise<void>;
   play(): void;
   pause(): void;
+  seekTo(seconds: number): Promise<void>;
   seekBy(seconds: number): Promise<void>;
   /** Applies to only the current item; never mutates class defaults. */
   setTemporaryRate(rate: number): void;
@@ -460,6 +462,28 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     [audioStatus.currentTime, snapshot.kind],
   );
 
+  const seekTo = useCallback(
+    async (seconds: number) => {
+      upNextCountdown.current.cancel();
+      upNextRequest.current = null;
+      upNextKey.current = null;
+      setUpNextSeconds(null);
+      const durationSeconds =
+        snapshot.kind === 'video'
+          ? videoPlayerRef.current.duration
+          : snapshot.kind === 'audio'
+            ? audioStatus.duration
+            : 0;
+      const target = clampPlaybackPosition(seconds, durationSeconds);
+      if (snapshot.kind === 'video') {
+        videoPlayerRef.current.currentTime = target;
+      } else if (snapshot.kind === 'audio') {
+        await audioPlayerRef.current.seekTo(target);
+      }
+    },
+    [audioStatus.duration, snapshot.kind],
+  );
+
   const setTemporaryRate = useCallback(
     (rate: number) => {
       if (!isSupportedPlaybackRate(rate)) {
@@ -601,6 +625,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       start,
       play,
       pause,
+      seekTo,
       seekBy,
       setTemporaryRate,
       setRate,
@@ -619,6 +644,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     phase,
     play,
     seekBy,
+    seekTo,
     setTemporaryRate,
     setRate,
     setDefaultRate,

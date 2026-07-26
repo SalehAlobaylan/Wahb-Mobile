@@ -1,7 +1,7 @@
 import { fireEvent, render } from '@testing-library/react-native';
-import { describe, expect, it, jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
-import '@/core/i18n';
+import i18n from '@/core/i18n';
 import { verifiedUserSession } from '@/testing/fixtures';
 
 import { InterestsScreen } from './interests-screen';
@@ -22,6 +22,10 @@ const query = jest.requireMock('@tanstack/react-query') as {
 };
 
 describe('InterestsScreen', () => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en');
+  });
+
   it('renders a server-owned muted source and restores it through the authenticated API', async () => {
     const unmuteSource = jest.fn();
     const restoreMutation = { mutate: jest.fn() };

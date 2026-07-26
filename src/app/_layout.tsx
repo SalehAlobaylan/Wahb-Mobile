@@ -14,6 +14,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { initializeDatabase } from '@/core/database/migrations';
 import { initializeDiagnostics } from '@/core/diagnostics/sentry';
@@ -30,6 +31,7 @@ import {
 } from '@/features/settings/experience-preferences';
 import { queryClient } from '@/core/query/query-client';
 import { AppErrorBoundary } from '@/core/ui/app-error-boundary';
+import { WahbThemeProvider } from '@/design/theme';
 import { OutboxProvider } from '@/core/outbox/outbox-provider';
 import { ConnectivityProvider } from '@/core/network/connectivity-provider';
 import { AuthProvider } from '@/features/auth/auth-provider';
@@ -85,40 +87,50 @@ export default function RootLayout() {
   }
 
   return (
-    <AppErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <ConnectivityProvider>
-          <SQLiteProvider databaseName="wahb.db" onInit={initializeDatabase}>
-            <AuthProvider>
-              <OutboxProvider>
-                <PlaybackProvider>
-                  <StatusBar style="auto" />
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen name="index" />
-                    <Stack.Screen name="news" />
-                    <Stack.Screen name="article/[id]" />
-                    <Stack.Screen name="sign-in" />
-                    <Stack.Screen name="register" />
-                    <Stack.Screen name="check-email" />
-                    <Stack.Screen name="forgot-password" />
-                    <Stack.Screen name="reset-password" />
-                    <Stack.Screen name="verify-email" />
-                    <Stack.Screen name="account" />
-                    <Stack.Screen name="profile" />
-                    <Stack.Screen name="interests" />
-                    <Stack.Screen name="saved" />
-                    <Stack.Screen name="history" />
-                    <Stack.Screen name="settings" />
-                    <Stack.Screen name="delete-account" />
-                  </Stack>
-                  <LinkDispatcherProvider />
-                  <NonFeedNowPlaying />
-                </PlaybackProvider>
-              </OutboxProvider>
-            </AuthProvider>
-          </SQLiteProvider>
-        </ConnectivityProvider>
-      </QueryClientProvider>
-    </AppErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppErrorBoundary>
+        <WahbThemeProvider>
+          <QueryClientProvider client={queryClient}>
+            <ConnectivityProvider>
+              <SQLiteProvider
+                databaseName="wahb.db"
+                onInit={initializeDatabase}
+              >
+                <AuthProvider>
+                  <OutboxProvider>
+                    <PlaybackProvider>
+                      <StatusBar style="auto" />
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen
+                          name="(feeds)"
+                          options={{ animation: 'none' }}
+                        />
+                        <Stack.Screen name="search" />
+                        <Stack.Screen name="article/[id]" />
+                        <Stack.Screen name="sign-in" />
+                        <Stack.Screen name="register" />
+                        <Stack.Screen name="check-email" />
+                        <Stack.Screen name="forgot-password" />
+                        <Stack.Screen name="reset-password" />
+                        <Stack.Screen name="verify-email" />
+                        <Stack.Screen name="account" />
+                        <Stack.Screen name="profile" />
+                        <Stack.Screen name="interests" />
+                        <Stack.Screen name="history" />
+                        <Stack.Screen name="settings" />
+                        <Stack.Screen name="settings/[panel]" />
+                        <Stack.Screen name="delete-account" />
+                      </Stack>
+                      <LinkDispatcherProvider />
+                      <NonFeedNowPlaying />
+                    </PlaybackProvider>
+                  </OutboxProvider>
+                </AuthProvider>
+              </SQLiteProvider>
+            </ConnectivityProvider>
+          </QueryClientProvider>
+        </WahbThemeProvider>
+      </AppErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

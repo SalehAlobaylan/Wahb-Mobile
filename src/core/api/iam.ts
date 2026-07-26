@@ -21,6 +21,7 @@ export type IamApi = {
   requestAccountDeletion(password: string): Promise<void>;
   getProfile(): Promise<IamProfile>;
   updateProfile(input: UpdateProfileInput): Promise<IamProfile>;
+  uploadAvatar(input: AvatarUploadInput): Promise<IamProfile>;
 };
 
 export type PasswordCredentials = {
@@ -36,6 +37,12 @@ export type UpdateProfileInput = {
   username?: string;
   bio?: string;
   avatarUrl?: string;
+};
+
+export type AvatarUploadInput = {
+  uri: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
+  name: string;
 };
 
 export function createIamApi(transport: Transport): IamApi {
@@ -145,6 +152,24 @@ export function createIamApi(transport: Transport): IamApi {
               ? { avatar_url: input.avatarUrl }
               : {}),
           },
+        },
+        iamProfileSchema,
+      );
+    },
+    uploadAvatar(input) {
+      const formData = new FormData();
+      formData.append('avatar', {
+        uri: input.uri,
+        type: input.mimeType,
+        name: input.name,
+      } as unknown as Blob);
+      return transport.request(
+        {
+          method: 'POST',
+          path: '/api/v1/users/avatar',
+          formData,
+          authenticated: true,
+          timeoutMs: 30_000,
         },
         iamProfileSchema,
       );

@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { captureException } from '@/core/diagnostics/diagnostics';
 import i18n from '@/core/i18n';
@@ -39,7 +41,12 @@ export class AppErrorBoundary extends Component<
     return (
       <SafeAreaView style={styles.safeArea}>
         <View accessibilityLiveRegion="assertive" style={styles.content}>
-          <Text style={styles.eyebrow}>WAHB</Text>
+          <Image
+            accessibilityLabel="Wahb"
+            contentFit="contain"
+            source={require('../../../assets/brand/wahb_mark_transparent.png')}
+            style={styles.brandMark}
+          />
           <Text accessibilityRole="header" style={styles.title}>
             {i18n.t('errors.title')}
           </Text>
@@ -71,11 +78,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: spacing.lg,
   },
-  eyebrow: {
-    color: colors.pressRed,
-    fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
-    letterSpacing: 1.5,
+  brandMark: {
+    height: 58,
+    width: 50,
   },
   title: {
     color: colors.ink,

@@ -1,25 +1,20 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView } from 'expo-video';
 import { useQuery } from '@tanstack/react-query';
 import {
   Bookmark,
-  ChevronLeft,
-  ChevronRight,
-  CircleUserRound,
   FileText,
-  Gauge,
   Heart,
   Info,
   Maximize2,
   MessageCircle,
-  Minimize2,
   MoreHorizontal,
+  Minimize2,
   Pause,
   Play,
   Radio,
   RotateCcw,
-  Share2,
   WifiOff,
   EyeOff,
   X,
@@ -35,14 +30,14 @@ import {
   type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
-  SafeAreaView,
-  Share,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { useSQLiteContext } from 'expo-sqlite';
+import Storage from 'expo-sqlite/kv-store';
 import { useTranslation } from 'react-i18next';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   captureDiagnostic,
@@ -50,11 +45,7 @@ import {
   elapsedMilliseconds,
 } from '@/core/diagnostics/diagnostics';
 import { NetworkError } from '@/core/api';
-import {
-  hapticSelection,
-  hapticSuccess,
-  hapticWarning,
-} from '@/core/haptics/feedback';
+import { hapticSuccess, hapticWarning } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { useConnectivity } from '@/core/network/connectivity-provider';
 import { useReducedMotion } from '@/core/ui/use-reduced-motion';
@@ -66,7 +57,10 @@ import {
   recordForYouProgress,
   updateForYouSessionPosition,
 } from '@/features/feed-session/for-you-session-repository';
-import { useForYouSession } from '@/features/feed-session/use-for-you-session';
+import {
+  type ForYouDurationPreference,
+  useForYouSession,
+} from '@/features/feed-session/use-for-you-session';
 import {
   classifyConsumption,
   createConsumptionState,
@@ -75,16 +69,31 @@ import {
 } from '@/features/playback/consumption-classifier';
 import { usePlaybackController } from '@/features/playback/playback-provider';
 import { useMediaPreparation } from '@/features/playback/use-media-preparation';
-import {
-  playbackRates,
-  type PlaybackItem,
-} from '@/features/playback/playback-model';
+import { type PlaybackItem } from '@/features/playback/playback-model';
 
-import { ForYouDetailSheet } from './for-you-detail-sheet';
+import {
+  ForYouDetailSheet,
+  type ForYouDetailSheetHandle,
+} from './for-you-detail-sheet';
 import { ReportSheet } from '@/features/moderation/report-sheet';
 import type { ForYouIntent } from './for-you-intents';
+import {
+  activeTranscriptCueIndex,
+  formatTranscriptTime,
+  transcriptCues,
+} from './for-you-transcript-model';
 
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import {
+  colors,
+  componentMetrics,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+  typeScale,
+} from '@/design/tokens';
+import { ForYouFeedChrome } from '@/components/navigation/feed-chrome';
+import { useWahbTypography } from '@/design/typography';
 
 function formatDuration(durationSeconds: number): string {
   const minutes = Math.floor(durationSeconds / 60);
@@ -94,8 +103,8 @@ function formatDuration(durationSeconds: number): string {
 
 export function ForYouSliceScreen() {
   const { t } = useTranslation();
-  const router = useRouter();
   const db = useSQLiteContext();
+  const [duration, setDuration] = useState<ForYouDurationPreference>();
   const {
     identityQuery,
     sessionQuery,
@@ -103,8 +112,10 @@ export function ForYouSliceScreen() {
     hideItem,
     refreshSession,
     checkForFreshness,
-  } = useForYouSession();
+  } = useForYouSession(duration);
   const playback = usePlaybackController();
+  const startPlayback = playback.start;
+  const autoplayEnabled = playback.autoplayEnabled;
   const {
     cancelUpNext,
     didReachEnd,
@@ -136,11 +147,9 @@ export function ForYouSliceScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasNewContent, setHasNewContent] = useState(false);
   const [displayMode, setDisplayMode] = useState<'fit' | 'fill' | 'transcript'>(
-    'fill',
+    'fit',
   );
-  const [detailTab, setDetailTab] = useState<
-    'comments' | 'transcript' | 'about' | null
-  >(null);
+  const detailSheetRef = useRef<ForYouDetailSheetHandle>(null);
   const [engagement, setEngagement] = useState<
     Record<string, { liked?: boolean; bookmarked?: boolean }>
   >({});
@@ -163,6 +172,7 @@ export function ForYouSliceScreen() {
     type: 'content';
     id: string;
   } | null>(null);
+  const { font } = useWahbTypography();
   const session = sessionQuery.data;
   const isOfflineSnapshot = session?.isOfflineSnapshot === true;
   const [connectionRequiredForId, setConnectionRequiredForId] = useState<
@@ -249,6 +259,22 @@ export function ForYouSliceScreen() {
     queryFn: () => clients.cms.getTranscript(item!.transcript_id!),
     enabled: displayMode === 'transcript' && Boolean(item?.transcript_id),
   });
+
+  useEffect(() => {
+    void Storage.getItem('foryou-display-mode-v1').then((value) => {
+      if (value === 'fit' || value === 'fill' || value === 'transcript') {
+        setDisplayMode(value);
+      }
+    });
+  }, []);
+
+  const selectDisplayMode = useCallback(
+    (next: 'fit' | 'fill' | 'transcript') => {
+      setDisplayMode(next);
+      void Storage.setItem('foryou-display-mode-v1', next);
+    },
+    [],
+  );
 
   useEffect(() => {
     feedScreenStartedAt.current = performance.now();
@@ -585,20 +611,6 @@ export function ForYouSliceScreen() {
     reducedMotion,
   ]);
 
-  const cyclePlaybackRate = useCallback(() => {
-    if (!isCurrent) {
-      return;
-    }
-    const currentIndex = playbackRates.indexOf(
-      playback.rate as (typeof playbackRates)[number],
-    );
-    const nextRate =
-      playbackRates[(currentIndex + 1) % playbackRates.length] ??
-      playbackRates[0]!;
-    playback.setRate(nextRate);
-    hapticSelection();
-  }, [isCurrent, playback]);
-
   const dispatchIntent = useCallback(
     (intent: ForYouIntent) => {
       switch (intent) {
@@ -612,10 +624,10 @@ export function ForYouSliceScreen() {
           void selectPosition(position + 1);
           return;
         case 'open-comments':
-          setDetailTab('comments');
+          detailSheetRef.current?.open('comments');
           return;
         case 'open-about':
-          setDetailTab('about');
+          detailSheetRef.current?.open('about');
           return;
         case 'open-overflow':
           setIsOverflowVisible(true);
@@ -697,23 +709,6 @@ export function ForYouSliceScreen() {
     },
     [engagement, item, outbox],
   );
-
-  const shareItem = useCallback(async () => {
-    if (!item) {
-      return;
-    }
-    try {
-      const result = await Share.share({
-        message: `https://wahb.salehspace.dev/content/${item.id}`,
-        title: item.title,
-      });
-      if (result.action === Share.sharedAction) {
-        await outbox.enqueue({ contentId: item.id, type: 'share' });
-      }
-    } catch (error) {
-      captureException('foryou_share_failed', error);
-    }
-  }, [item, outbox]);
 
   const hideCurrentItem = useCallback(async () => {
     if (!item) {
@@ -802,13 +797,18 @@ export function ForYouSliceScreen() {
     ) {
       return;
     }
-    void playback
-      .start(activePlaybackItem, {
-        positionSeconds: 0,
-        autoplay: playback.autoplayEnabled,
-      })
-      .finally(() => setPendingAutoplay(null));
-  }, [activePlaybackItem, pendingAutoplay, playback, position, session?.id]);
+    void startPlayback(activePlaybackItem, {
+      positionSeconds: 0,
+      autoplay: autoplayEnabled,
+    }).finally(() => setPendingAutoplay(null));
+  }, [
+    activePlaybackItem,
+    autoplayEnabled,
+    pendingAutoplay,
+    position,
+    session?.id,
+    startPlayback,
+  ]);
 
   const advanceUpNext = useCallback(
     async (
@@ -946,7 +946,7 @@ export function ForYouSliceScreen() {
   }
 
   return (
-    <SafeAreaView onLayout={handlePagerLayout} style={styles.safeArea}>
+    <View onLayout={handlePagerLayout} style={styles.safeArea}>
       <FlatList
         data={session.items}
         decelerationRate="fast"
@@ -1020,9 +1020,28 @@ export function ForYouSliceScreen() {
             accessible={false}
             disabled={index !== position}
             onPress={() => dispatchIntent('toggle-playback')}
+            testID={index === position ? 'for-you-playback-toggle' : undefined}
             style={[styles.page, { height: pageHeight }]}
           >
-            {index === position && isVideoVisible ? (
+            {index === position && displayMode === 'transcript' ? (
+              <>
+                {page.item.thumbnail_url ? (
+                  <Image
+                    contentFit="cover"
+                    source={page.item.thumbnail_url}
+                    style={styles.transcriptBackgroundImage}
+                  />
+                ) : null}
+                <LinearGradient
+                  colors={[
+                    'rgba(10,10,10,0.58)',
+                    'rgba(10,10,10,0.78)',
+                    'rgba(10,10,10,0.94)',
+                  ]}
+                  style={styles.transcriptBackdrop}
+                />
+              </>
+            ) : index === position && isVideoVisible ? (
               <VideoView
                 player={playback.videoPlayer}
                 style={StyleSheet.absoluteFill}
@@ -1067,7 +1086,7 @@ export function ForYouSliceScreen() {
           <Pressable
             accessibilityLabel={t('foryou.fit')}
             accessibilityRole="button"
-            onPress={() => setDisplayMode('fit')}
+            onPress={() => selectDisplayMode('fit')}
             style={({ pressed }) => [
               styles.railButton,
               displayMode === 'fit' && styles.railButtonActive,
@@ -1079,7 +1098,7 @@ export function ForYouSliceScreen() {
           <Pressable
             accessibilityLabel={t('foryou.fill')}
             accessibilityRole="button"
-            onPress={() => setDisplayMode('fill')}
+            onPress={() => selectDisplayMode('fill')}
             style={({ pressed }) => [
               styles.railButton,
               displayMode === 'fill' && styles.railButtonActive,
@@ -1092,7 +1111,7 @@ export function ForYouSliceScreen() {
             accessibilityLabel={t('foryou.transcript')}
             accessibilityRole="button"
             accessibilityState={{ selected: displayMode === 'transcript' }}
-            onPress={() => setDisplayMode('transcript')}
+            onPress={() => selectDisplayMode('transcript')}
             style={({ pressed }) => [
               styles.railButton,
               displayMode === 'transcript' && styles.railButtonActive,
@@ -1102,36 +1121,28 @@ export function ForYouSliceScreen() {
             <FileText color={colors.inkInverse} size={18} />
           </Pressable>
         </View>
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.feedLabel}>{t('foryou.feedLabel')}</Text>
-            {hasNewContent ? (
-              <Pressable
-                accessibilityLabel={t('foryou.newContent')}
-                accessibilityRole="button"
-                disabled={isRefreshing}
-                onPress={() => void refreshForYouSession()}
-              >
-                <Text style={styles.newContentLabel}>
-                  {t('foryou.newContent')}
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-          <View style={styles.headerRight}>
-            <Text style={styles.sessionLabel}>
-              {position + 1} / {session.items.length}
-            </Text>
+        <ForYouFeedChrome duration={duration} onDurationChange={setDuration} />
+        <View style={styles.feedStatusRow}>
+          {hasNewContent ? (
             <Pressable
-              testID="account-entry"
-              accessibilityLabel={t('account.title')}
+              accessibilityLabel={t('foryou.newContent')}
               accessibilityRole="button"
-              onPress={() => router.push('/account')}
-              style={styles.accountButton}
+              disabled={isRefreshing}
+              onPress={() => void refreshForYouSession()}
+              style={styles.newContentPill}
             >
-              <CircleUserRound color={colors.inkInverse} size={21} />
+              <Text
+                style={[styles.newContentLabel, { fontFamily: font('bold') }]}
+              >
+                {t('foryou.newContent')}
+              </Text>
             </Pressable>
-          </View>
+          ) : (
+            <View />
+          )}
+          <Text style={[styles.sessionLabel, { fontFamily: font('mono') }]}>
+            {position + 1} / {session.items.length}
+          </Text>
         </View>
         {isOfflineSnapshot ? (
           <View accessibilityLiveRegion="polite" style={styles.offlineBanner}>
@@ -1146,24 +1157,33 @@ export function ForYouSliceScreen() {
             hasTranscript={Boolean(item.transcript_id)}
             isError={transcriptQuery.isError}
             isLoading={transcriptQuery.isLoading}
+            positionSeconds={playbackPositionSeconds}
             sourceName={item.source_name}
             text={transcriptQuery.data?.full_text}
+            timestamps={transcriptQuery.data?.word_timestamps}
           />
         ) : null}
 
         <View style={styles.footer}>
           <View style={styles.metaRow}>
             <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
-            <Text style={styles.metaText}>{item.type}</Text>
-            <Text style={styles.metaText}>
+            <Text style={[styles.metaText, { fontFamily: font('bold') }]}>
+              {item.type}
+            </Text>
+            <Text style={[styles.metaText, { fontFamily: font('mono') }]}>
               {formatDuration(item.duration_sec)}
             </Text>
           </View>
-          <Text style={styles.title} numberOfLines={3}>
+          <Text
+            style={[styles.title, { fontFamily: font('editorial') }]}
+            numberOfLines={3}
+          >
             {item.title}
           </Text>
           {!!item.source_name && (
-            <Text style={styles.source}>{item.source_name}</Text>
+            <Text style={[styles.source, { fontFamily: font('medium') }]}>
+              {item.source_name}
+            </Text>
           )}
 
           <View
@@ -1217,7 +1237,7 @@ export function ForYouSliceScreen() {
             </Text>
           ) : null}
 
-          <View style={styles.actionRail}>
+          <View style={[styles.actionRail, styles.hiddenActionRail]}>
             <Pressable
               accessibilityLabel={liked ? t('foryou.unlike') : t('foryou.like')}
               accessibilityRole="button"
@@ -1270,28 +1290,6 @@ export function ForYouSliceScreen() {
               <Text style={styles.actionCount}>{item.comment_count}</Text>
             </Pressable>
             <Pressable
-              accessibilityLabel={t('foryou.share')}
-              accessibilityRole="button"
-              onPress={() => void shareItem()}
-              style={({ pressed }) => [
-                styles.actionButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Share2 color={colors.inkInverse} size={22} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.about')}
-              accessibilityRole="button"
-              onPress={() => dispatchIntent('open-about')}
-              style={({ pressed }) => [
-                styles.actionButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Info color={colors.inkInverse} size={22} />
-            </Pressable>
-            <Pressable
               accessibilityLabel={t('foryou.moreActions')}
               accessibilityRole="button"
               onPress={() => dispatchIntent('open-overflow')}
@@ -1303,95 +1301,65 @@ export function ForYouSliceScreen() {
               <MoreHorizontal color={colors.inkInverse} size={22} />
             </Pressable>
           </View>
-
-          <View style={styles.controls}>
-            <Pressable
-              accessibilityLabel={t('foryou.changeSpeed', {
-                rate: isCurrent ? playback.rate : 1,
-              })}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !isCurrent }}
-              disabled={!isCurrent}
-              onPress={cyclePlaybackRate}
-              style={({ pressed }) => [
-                styles.speedButton,
-                !isCurrent && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Gauge color={colors.inkInverse} size={17} />
-              <Text style={styles.speedText}>
-                {isCurrent ? playback.rate : 1}×
-              </Text>
-            </Pressable>
-            <Pressable
-              testID="for-you-playback-toggle"
-              accessibilityRole="button"
-              accessibilityLabel={t('foryou.previous')}
-              disabled={position === 0}
-              onPress={() => dispatchIntent('previous-item')}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                position === 0 && styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronLeft color={colors.inkInverse} size={22} />
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                isCurrent && playback.phase === 'playing'
-                  ? t('foryou.pause')
-                  : t('foryou.play')
-              }
-              onPress={() => dispatchIntent('toggle-playback')}
-              style={({ pressed }) => [
-                styles.playButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              {isCurrent && playback.phase === 'playing' ? (
-                <Pause
-                  color={colors.inkInverse}
-                  size={26}
-                  fill={colors.inkInverse}
-                />
-              ) : (
-                <Play
-                  color={colors.inkInverse}
-                  size={26}
-                  fill={colors.inkInverse}
-                />
-              )}
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={t('foryou.next')}
-              disabled={
-                session.cursor === null && position >= session.items.length - 1
-              }
-              onPress={() => dispatchIntent('next-item')}
-              style={({ pressed }) => [
-                styles.secondaryButton,
-                session.cursor === null &&
-                  position >= session.items.length - 1 &&
-                  styles.disabledButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <ChevronRight color={colors.inkInverse} size={22} />
-            </Pressable>
-          </View>
         </View>
       </View>
-      {installationId && detailTab ? (
+      {installationId ? (
         <ForYouDetailSheet
-          initialTab={detailTab}
+          ref={detailSheetRef}
           installationId={installationId}
           item={item}
-          onClose={() => setDetailTab(null)}
-          visible
+          collapsedContent={
+            <View style={styles.sheetActionRail}>
+              <Pressable
+                accessibilityLabel={
+                  liked ? t('foryou.unlike') : t('foryou.like')
+                }
+                accessibilityRole="button"
+                onPress={() => void toggleEngagement('like')}
+                style={styles.sheetActionButton}
+              >
+                <Heart
+                  color={colors.ink}
+                  fill={liked ? colors.ink : 'transparent'}
+                  size={21}
+                />
+                <Text style={styles.sheetActionText}>
+                  {item.like_count + Number(liked) - Number(item.is_liked)}
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={t('foryou.comments')}
+                accessibilityRole="button"
+                onPress={() => detailSheetRef.current?.open('comments')}
+                style={styles.sheetActionButton}
+              >
+                <MessageCircle color={colors.ink} size={21} />
+                <Text style={styles.sheetActionText}>{item.comment_count}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={
+                  bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+                }
+                accessibilityRole="button"
+                onPress={() => void toggleEngagement('bookmark')}
+                style={styles.sheetActionButton}
+              >
+                <Bookmark
+                  color={colors.ink}
+                  fill={bookmarked ? colors.ink : 'transparent'}
+                  size={21}
+                />
+              </Pressable>
+              <Pressable
+                accessibilityLabel={t('foryou.moreActions')}
+                accessibilityRole="button"
+                onPress={() => dispatchIntent('open-overflow')}
+                style={styles.sheetActionButton}
+              >
+                <MoreHorizontal color={colors.ink} size={21} />
+              </Pressable>
+            </View>
+          }
         />
       ) : null}
       <ForYouOverflowSheet
@@ -1409,7 +1377,7 @@ export function ForYouSliceScreen() {
         target={reportTarget}
         visible={Boolean(reportTarget)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -1417,51 +1385,85 @@ function ForYouTranscriptMode({
   hasTranscript,
   isError,
   isLoading,
+  positionSeconds,
   sourceName,
   text,
+  timestamps,
 }: {
   hasTranscript: boolean;
   isError: boolean;
   isLoading: boolean;
+  positionSeconds: number;
   sourceName?: string;
   text?: string;
+  timestamps: unknown;
 }) {
   const { t } = useTranslation();
-  const excerpt = text ? createTranscriptExcerpt(text) : null;
+  const { font } = useWahbTypography();
+  const cues = transcriptCues(text, timestamps);
+  const activeIndex = activeTranscriptCueIndex(cues, positionSeconds);
+  const visibleCues = cues
+    .map((cue, index) => ({ cue, index }))
+    .filter(({ index }) => Math.abs(index - activeIndex) <= 1);
+  const activeCue = cues[activeIndex];
 
   return (
     <View pointerEvents="none" style={styles.transcriptSurface}>
       <View style={styles.transcriptHalo} />
       <View style={styles.transcriptEyebrowRow}>
-        <Text style={styles.transcriptEyebrow}>{t('foryou.transcript')}</Text>
+        <Text style={[styles.transcriptEyebrow, { fontFamily: font('bold') }]}>
+          {t('foryou.transcript')}
+        </Text>
         {!!sourceName && (
-          <Text numberOfLines={1} style={styles.transcriptSource}>
+          <Text
+            numberOfLines={1}
+            style={[styles.transcriptSource, { fontFamily: font('medium') }]}
+          >
             {sourceName}
           </Text>
         )}
       </View>
-      {isLoading ? <ActivityIndicator color={colors.pressRed} /> : null}
-      {!isLoading && !hasTranscript ? (
-        <Text style={styles.transcriptEmpty}>{t('foryou.noTranscript')}</Text>
-      ) : null}
-      {!isLoading && isError ? (
-        <Text style={styles.transcriptEmpty}>
-          {t('foryou.transcriptUnavailable')}
+      <View style={styles.transcriptCueStack}>
+        {isLoading ? <ActivityIndicator color={colors.pressRed} /> : null}
+        {!isLoading && !hasTranscript ? (
+          <Text
+            style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
+          >
+            {t('foryou.noTranscript')}
+          </Text>
+        ) : null}
+        {!isLoading && isError ? (
+          <Text
+            style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
+          >
+            {t('foryou.transcriptUnavailable')}
+          </Text>
+        ) : null}
+        {!isLoading && !isError && visibleCues.length
+          ? visibleCues.map(({ cue, index }) => {
+              const active = index === activeIndex;
+              return (
+                <Text
+                  key={`${cue.startSeconds ?? 'text'}-${index}`}
+                  numberOfLines={active ? 3 : 2}
+                  style={[
+                    active ? styles.transcriptCueActive : styles.transcriptCue,
+                    { fontFamily: font(active ? 'bold' : 'body') },
+                  ]}
+                >
+                  {cue.text}
+                </Text>
+              );
+            })
+          : null}
+      </View>
+      {formatTranscriptTime(activeCue?.startSeconds) ? (
+        <Text style={[styles.transcriptTimecode, { fontFamily: font('mono') }]}>
+          {formatTranscriptTime(activeCue?.startSeconds)}
         </Text>
-      ) : null}
-      {!isLoading && !isError && excerpt ? (
-        <Text style={styles.transcriptExcerpt}>{excerpt}</Text>
       ) : null}
     </View>
   );
-}
-
-function createTranscriptExcerpt(text: string): string {
-  const normalized = text.replace(/\s+/g, ' ').trim();
-  if (normalized.length <= 520) {
-    return normalized;
-  }
-  return `${normalized.slice(0, 520).trimEnd()}…`;
 }
 
 function ForYouOverflowSheet({
@@ -1630,16 +1632,11 @@ function ForYouEmpty({
         accessibilityLabel={t('foryou.refreshSession')}
         disabled={refreshing}
         onPress={onRefresh}
-        style={({ pressed }) => [
-          styles.retryButton,
-          pressed && styles.pressed,
-        ]}
+        style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
       >
         <RotateCcw color={colors.inkInverse} size={18} />
         <Text style={styles.retryText}>
-          {refreshing
-            ? t('foryou.refreshing')
-            : t('foryou.refreshSession')}
+          {refreshing ? t('foryou.refreshing') : t('foryou.refreshSession')}
         </Text>
       </Pressable>
     </SafeAreaView>
@@ -1659,6 +1656,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
+  transcriptBackdrop: {
+    ...StyleSheet.absoluteFill,
+  },
+  transcriptBackgroundImage: {
+    ...StyleSheet.absoluteFill,
+    opacity: 0.52,
+    transform: [{ scale: 1.06 }],
+  },
   overlay: {
     backgroundColor: 'rgba(0,0,0,0.42)',
     bottom: 0,
@@ -1669,38 +1674,40 @@ const styles = StyleSheet.create({
   },
   transcriptSurface: {
     alignItems: 'center',
-    bottom: 220,
+    bottom: '31%',
     justifyContent: 'center',
-    left: spacing.lg,
+    left: layoutMetrics.pageGutter,
     overflow: 'hidden',
     position: 'absolute',
-    right: 74,
-    top: 112,
+    // Keep the display rail visible and keep transcript rhythm independent of
+    // any particular iPhone height.
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.lg,
+    right: 72,
+    top: '25%',
   },
   transcriptHalo: {
     backgroundColor: 'rgba(230,57,70,0.24)',
     borderRadius: radii.round,
-    height: 280,
+    height: 180,
     opacity: 0.78,
     position: 'absolute',
-    top: -70,
+    top: -30,
     width: 280,
   },
   transcriptEyebrowRow: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: spacing.sm,
+    alignSelf: 'stretch',
+    marginBottom: spacing.lg,
   },
   transcriptEyebrow: {
     backgroundColor: colors.pressRed,
     borderRadius: radii.round,
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 11,
+    ...typeScale.label,
     letterSpacing: 1.1,
     overflow: 'hidden',
     paddingHorizontal: spacing.sm,
@@ -1710,21 +1717,45 @@ const styles = StyleSheet.create({
     color: 'rgba(248,245,242,0.78)',
     flex: 1,
     fontFamily: fontFamilies.bodyMedium,
-    fontSize: 12,
+    ...typeScale.meta,
   },
-  transcriptExcerpt: {
+  transcriptCueStack: {
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: spacing.sm,
+    justifyContent: 'center',
+  },
+  transcriptCue: {
+    color: 'rgba(248,245,242,0.46)',
+    fontFamily: fontFamilies.body,
+    ...typeScale.body,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  transcriptCueActive: {
     color: colors.inkInverse,
-    fontFamily: fontFamilies.editorial,
-    fontSize: 24,
-    lineHeight: 35,
+    fontFamily: fontFamilies.bodyBold,
+    fontSize: 21,
+    lineHeight: 30,
     textAlign: 'center',
   },
   transcriptEmpty: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyMedium,
-    fontSize: 16,
-    lineHeight: 24,
+    ...typeScale.bodyLarge,
     textAlign: 'center',
+  },
+  transcriptTimecode: {
+    borderColor: colors.pressRed,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    color: colors.inkInverse,
+    fontFamily: fontFamilies.mono,
+    ...typeScale.micro,
+    marginTop: spacing.lg,
+    overflow: 'hidden',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
   },
   overflowRoot: { flex: 1, justifyContent: 'flex-end' },
   overflowScrim: {
@@ -1805,6 +1836,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
+  feedStatusRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: spacing.xs,
+  },
   headerRight: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   accountButton: {
     alignItems: 'center',
@@ -1819,8 +1857,10 @@ const styles = StyleSheet.create({
   displayRail: {
     gap: spacing.sm,
     position: 'absolute',
-    right: spacing.md,
-    top: 78,
+    end: spacing.md,
+    // The web rail begins beneath the cinematic header and duration strip.
+    // Keeping it out of that chrome avoids an accidental four-layer overlap.
+    top: 196,
   },
   railButton: {
     alignItems: 'center',
@@ -1828,9 +1868,9 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(248,245,242,0.54)',
     borderRadius: radii.round,
     borderWidth: 1,
-    height: 44,
+    height: componentMetrics.displayRailControl,
     justifyContent: 'center',
-    width: 44,
+    width: componentMetrics.displayRailControl,
   },
   railButtonActive: {
     backgroundColor: colors.pressRed,
@@ -1845,14 +1885,22 @@ const styles = StyleSheet.create({
   newContentLabel: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 11,
+    ...typeScale.label,
     letterSpacing: 0.8,
     marginLeft: 'auto',
+  },
+  newContentPill: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    borderColor: 'rgba(248,245,242,0.32)',
+    borderRadius: radii.round,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
   },
   sessionLabel: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.mono,
-    fontSize: 12,
+    ...typeScale.meta,
   },
   offlineBanner: {
     alignItems: 'center',
@@ -1871,27 +1919,32 @@ const styles = StyleSheet.create({
   offlineBannerText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 11,
+    ...typeScale.label,
   },
-  footer: { marginTop: 'auto', padding: spacing.lg },
+  footer: {
+    marginTop: 'auto',
+    // Reserve the compact action sheet without crowding the media metadata.
+    paddingBottom: 102,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: spacing.lg,
+  },
   metaRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
   metaText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 12,
+    ...typeScale.meta,
     letterSpacing: 0.8,
   },
   title: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.editorial,
-    fontSize: 29,
-    lineHeight: 35,
+    ...typeScale.heading,
     marginTop: spacing.sm,
   },
   source: {
     color: '#e9e3de',
     fontFamily: fontFamilies.bodyMedium,
-    fontSize: 15,
+    ...typeScale.meta,
     marginTop: spacing.xs,
   },
   progressTrack: {
@@ -1920,7 +1973,7 @@ const styles = StyleSheet.create({
   playbackRetryText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 14,
+    ...typeScale.body,
   },
   errorText: {
     color: colors.pressRedDark,
@@ -1930,7 +1983,7 @@ const styles = StyleSheet.create({
   upNextText: {
     color: colors.inkInverse,
     fontFamily: fontFamilies.bodyBold,
-    fontSize: 13,
+    ...typeScale.meta,
     marginTop: spacing.sm,
   },
   actionRail: {
@@ -1938,6 +1991,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  hiddenActionRail: { display: 'none' },
+  sheetActionRail: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    minHeight: 44,
+  },
+  sheetActionButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: 'center',
+  },
+  sheetActionText: {
+    color: colors.ink,
+    fontFamily: fontFamilies.mono,
+    ...typeScale.label,
   },
   actionButton: {
     alignItems: 'center',
@@ -1961,6 +2034,34 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.lg,
   },
+  sheetLauncher: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(20,20,20,0.82)',
+    borderColor: 'rgba(248,245,242,0.16)',
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.md,
+    paddingBottom: spacing.sm,
+    paddingTop: spacing.md,
+  },
+  sheetHandle: {
+    backgroundColor: 'rgba(248,245,242,0.4)',
+    borderRadius: radii.round,
+    height: 3,
+    position: 'absolute',
+    top: 6,
+    width: 42,
+  },
+  sheetTab: {
+    alignItems: 'center',
+    gap: 3,
+    minHeight: 44,
+    minWidth: 72,
+    justifyContent: 'center',
+  },
+  sheetTabText: { color: colors.inkInverse, fontSize: 11 },
   secondaryButton: {
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.38)',

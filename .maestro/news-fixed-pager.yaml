@@ -1,0 +1,48 @@
+appId: com.salehspace.wahb
+---
+# The feed fixture used by this flow has a tall first News story.
+- launchApp:
+    clearState: false
+- tapOn: 'NEWS'
+- extendedWaitUntil:
+    visible:
+      id: 'news-active-slide-0'
+    timeout: 10000
+
+# An incomplete drag may move the story's internal reader, but must never leave
+# the outer pager between stories.
+- swipe:
+    start: 50%, 72%
+    end: 50%, 58%
+    duration: 450
+- assertVisible:
+    id: 'news-active-slide-0'
+
+# Reach the bottom of the tall story, then hand the next outward gesture to the
+# fixed outer pager. Exactly one story becomes active.
+- swipe:
+    start: 50%, 82%
+    end: 50%, 18%
+    duration: 500
+- swipe:
+    start: 50%, 82%
+    end: 50%, 18%
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      id: 'news-active-slide-1'
+    timeout: 5000
+- assertNotVisible:
+    id: 'news-active-slide-2'
+
+# The second story starts at its top edge, so one downward edge gesture returns
+# to the first story and restores its in-memory reading offset.
+- swipe:
+    start: 50%, 20%
+    end: 50%, 82%
+    duration: 500
+- extendedWaitUntil:
+    visible:
+      id: 'news-active-slide-0'
+    timeout: 5000
+- takeScreenshot: 'news-fixed-pager-restored'

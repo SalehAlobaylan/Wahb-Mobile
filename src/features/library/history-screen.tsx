@@ -11,16 +11,24 @@ import {
   Alert,
   FlatList,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import type { HistoryItem } from '@/core/api';
 import { getInstallationId } from '@/core/identity/installation-id';
-import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
+import { goBackOrReplace } from '@/core/navigation/go-back';
+import {
+  colors,
+  fontFamilies,
+  layoutMetrics,
+  radii,
+  spacing,
+} from '@/design/tokens';
+import { useWahbTheme } from '@/design/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { usePlaybackController } from '@/features/playback/playback-provider';
 
@@ -28,6 +36,7 @@ export function HistoryScreen() {
   const { t } = useTranslation();
   const { clients, subject } = useAuth();
   const playback = usePlaybackController();
+  const { theme } = useWahbTheme();
   const queryClient = useQueryClient();
   const installationQuery = useQuery({
     queryKey: ['history-installation-identity'],
@@ -96,11 +105,11 @@ export function HistoryScreen() {
     [playback],
   );
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace('/account')}
           style={styles.icon}
         >
           <ChevronLeft color={colors.ink} size={24} />
@@ -119,6 +128,7 @@ export function HistoryScreen() {
         <ActivityIndicator color={colors.pressRed} style={styles.loader} />
       ) : (
         <FlatList
+          contentInsetAdjustmentBehavior="automatic"
           contentContainerStyle={items.length ? styles.list : styles.empty}
           data={items}
           keyExtractor={(item) => `${item.content_id}-${item.viewed_at}`}
@@ -170,7 +180,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    padding: spacing.md,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingVertical: layoutMetrics.pageTop,
   },
   icon: {
     alignItems: 'center',
@@ -184,8 +195,18 @@ const styles = StyleSheet.create({
     fontSize: 27,
   },
   loader: { marginTop: spacing.xl },
-  list: { gap: spacing.sm, padding: spacing.md },
-  empty: { flexGrow: 1, justifyContent: 'center', padding: spacing.xl },
+  list: {
+    gap: spacing.sm,
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: layoutMetrics.pageTop,
+  },
+  empty: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: layoutMetrics.pageBottom,
+    paddingHorizontal: layoutMetrics.pageGutter,
+  },
   emptyText: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.body,

@@ -168,6 +168,8 @@ const newsStorySummarySchema = z
     comment_count: z.number().int().nonnegative(),
     share_count: z.number().int().nonnegative(),
     view_count: z.number().int().nonnegative(),
+    is_liked: z.boolean().optional().default(false),
+    is_bookmarked: z.boolean().optional().default(false),
   })
   .passthrough();
 
@@ -287,9 +289,41 @@ const savedContentItemSchema = z
     playback_url: absoluteHttpUrl.optional(),
     playback_type: playbackTypeSchema.optional(),
     fallback_playback_url: absoluteHttpUrl.nullable().optional(),
+    fallback_playback_type: playbackTypeSchema.optional(),
+    fallback_has_video: z.boolean().optional(),
     has_video: z.boolean().optional(),
     duration_sec: z.number().int().positive().optional(),
     is_bookmarked: z.boolean().optional(),
+  })
+  .passthrough();
+
+const profileStatsSchema = z
+  .object({
+    saved: z.number().int().nonnegative(),
+    likes: z.number().int().nonnegative(),
+    listened: z.number().int().nonnegative(),
+    created: z.number().int().nonnegative(),
+  })
+  .passthrough();
+
+const myContentItemSchema = z
+  .object({
+    id: z.uuid(),
+    type: z.enum(['NEWS', 'ARTICLE', 'VIDEO', 'PODCAST']),
+    status: z.enum(['PENDING', 'PROCESSING', 'READY', 'FAILED', 'ARCHIVED']),
+    title: z.string().optional(),
+    excerpt: z.string().optional(),
+    thumbnail_url: absoluteHttpUrl.optional(),
+    duration_sec: z.number().int().nonnegative().optional(),
+    like_count: z.number().int().nonnegative(),
+    comment_count: z.number().int().nonnegative(),
+    published_at: z.string().datetime().optional(),
+    playback_url: absoluteHttpUrl.optional(),
+    playback_type: playbackTypeSchema.optional(),
+    fallback_playback_url: absoluteHttpUrl.optional(),
+    fallback_playback_type: playbackTypeSchema.optional(),
+    fallback_has_video: z.boolean().optional(),
+    has_video: z.boolean().optional(),
   })
   .passthrough();
 
@@ -297,6 +331,21 @@ export const savedContentResponseSchema = z
   .object({
     cursor: z.string().nullable().optional(),
     items: z.array(savedContentItemSchema),
+  })
+  .passthrough()
+  .transform((response) => ({
+    cursor: response.cursor ?? null,
+    items: response.items,
+  }));
+
+export const likedContentResponseSchema = savedContentResponseSchema;
+
+export const profileStatsResponseSchema = profileStatsSchema;
+
+export const myContentResponseSchema = z
+  .object({
+    cursor: z.string().nullable().optional(),
+    items: z.array(myContentItemSchema),
   })
   .passthrough()
   .transform((response) => ({
@@ -387,8 +436,12 @@ export const iamProfileSchema = z
     bio: z.string().nullable().optional(),
     avatar_url: absoluteHttpUrl.nullable().optional(),
     interests: z.array(z.string()).nullable().optional(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
+    // IAM serializes Go time values with a numeric RFC 3339 offset in local
+    // development (for example `+03:00`), while production may use `Z`.
+    // Both are valid instants and must not turn a successful profile response
+    // into a client-side contract failure.
+    created_at: z.string().datetime({ offset: true }),
+    updated_at: z.string().datetime({ offset: true }),
   })
   .passthrough();
 
@@ -424,6 +477,9 @@ export const transcriptResponseSchema = z
         content_item_id: z.uuid(),
         full_text: z.string().trim().min(1),
         summary: z.string().nullable().optional(),
+        // The CMS preserves provider-native timestamp shapes. The display layer
+        // normalizes this defensively because Deepgram and Whisper differ.
+        word_timestamps: z.unknown().nullable().optional(),
         language: z.string().nullable().optional(),
         created_at: z.string().datetime(),
       })
@@ -449,6 +505,10 @@ export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
 export type Transcript = z.infer<typeof transcriptResponseSchema>;
 export type SavedContentResponse = z.infer<typeof savedContentResponseSchema>;
 export type SavedContentItem = SavedContentResponse['items'][number];
+export type LikedContentResponse = z.infer<typeof likedContentResponseSchema>;
+export type ProfileStats = z.infer<typeof profileStatsResponseSchema>;
+export type MyContentResponse = z.infer<typeof myContentResponseSchema>;
+export type MyContentItem = MyContentResponse['items'][number];
 export type HistoryResponse = z.infer<typeof historyResponseSchema>;
 export type HistoryItem = HistoryResponse['items'][number];
 export type TopicPickerResponse = z.infer<typeof topicPickerResponseSchema>;

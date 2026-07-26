@@ -3,13 +3,13 @@ import { Image } from 'expo-image';
 import { Headphones, Newspaper, Radio } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import {
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   useColorScheme,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
@@ -72,8 +72,8 @@ export function FoundationScreen() {
           <Image
             source={
               dark
-                ? require('../../../assets/brand/wahb-wordmark-light.png')
-                : require('../../../assets/brand/wahb-wordmark.png')
+                ? require('../../../assets/brand/wahb_mark_transparent_dark.png')
+                : require('../../../assets/brand/wahb_mark_transparent.png')
             }
             style={styles.wordmark}
             contentFit="contain"
@@ -218,8 +218,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   wordmark: {
-    width: 112,
-    height: 42,
+    width: 38,
+    height: 46,
   },
   issue: {
     fontSize: 11,
