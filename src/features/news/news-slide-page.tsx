@@ -83,6 +83,14 @@ function lifecycleKey(
   return null;
 }
 
+function contentTextDirection(value: string | undefined) {
+  const isArabic = /[\u0600-\u06FF\u0750-\u077F]/u.test(value ?? '');
+  return {
+    textAlign: isArabic ? ('right' as const) : ('left' as const),
+    writingDirection: isArabic ? ('rtl' as const) : ('ltr' as const),
+  };
+}
+
 export function NewsSlidePage({
   slide,
   index,
@@ -200,15 +208,37 @@ export function NewsSlidePage({
           style={[styles.featured, { borderBottomColor: theme.border }]}
         >
           {slide.featured.thumbnail_url ? (
-            <Image
-              contentFit="cover"
-              source={slide.featured.thumbnail_url}
-              style={styles.hero}
-            />
+            <View style={styles.heroFrame}>
+              <Image
+                contentFit="cover"
+                source={slide.featured.thumbnail_url}
+                style={styles.hero}
+              />
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => onOpenCoverage(slide.featured)}
+                style={styles.coverageOverlay}
+              >
+                <Layers3 color={colors.inkInverse} size={12} />
+                <Text
+                  style={[
+                    styles.coverageOverlayText,
+                    { fontFamily: font('bold') },
+                  ]}
+                >
+                  {t('news.coveredBy', {
+                    count:
+                      slide.featured.source_count ||
+                      slide.featured.member_count,
+                  })}
+                </Text>
+              </Pressable>
+            </View>
           ) : slide.featured.source_image_url ? (
             <View
               style={[
                 styles.sourceStrip,
+                isRTL && styles.rowRtl,
                 { backgroundColor: theme.card, borderColor: theme.border },
               ]}
             >
@@ -221,55 +251,26 @@ export function NewsSlidePage({
                 numberOfLines={1}
                 style={[
                   styles.sourceStripName,
-                  { color: theme.mutedForeground, fontFamily: font('bold') },
+                  {
+                    color: theme.mutedForeground,
+                    ...contentTextDirection(slide.featured.source_name),
+                    fontFamily: font('bold'),
+                  },
                 ]}
               >
                 {slide.featured.source_name}
               </Text>
             </View>
           ) : null}
-          <View style={styles.storyBadges}>
-            {!!slide.featured.category && (
-              <View style={[styles.storyBadge, { borderColor: theme.border }]}>
-                <Tag color={theme.accent} size={12} />
-                <Text
-                  style={[
-                    styles.storyBadgeText,
-                    { color: theme.foreground, fontFamily: font('bold') },
-                  ]}
-                >
-                  {slide.featured.category}
-                </Text>
-              </View>
-            )}
-            {lifecycle ? (
-              <View
-                style={[
-                  styles.storyBadge,
-                  {
-                    backgroundColor: `${theme.accent}1A`,
-                    borderColor: theme.accent,
-                  },
-                ]}
-              >
-                <TrendingUp color={theme.accent} size={12} />
-                <Text
-                  style={[
-                    styles.storyBadgeText,
-                    { color: theme.accent, fontFamily: font('bold') },
-                  ]}
-                >
-                  {t(`news.lifecycle.${lifecycle}`)}
-                </Text>
-              </View>
-            ) : null}
-          </View>
           <Text
             numberOfLines={2}
             style={[
               styles.headline,
               {
                 color: theme.foreground,
+                ...contentTextDirection(
+                  slide.featured.title || slide.featured.label,
+                ),
                 fontFamily: fontForText(
                   slide.featured.title || slide.featured.label,
                   'editorial',
@@ -282,7 +283,10 @@ export function NewsSlidePage({
           {digest.length ? (
             <View style={styles.digest}>
               {digest.map((point) => (
-                <View key={point} style={styles.digestRow}>
+                <View
+                  key={point}
+                  style={[styles.digestRow, isRTL && styles.rowRtl]}
+                >
                   <View
                     style={[
                       styles.digestDot,
@@ -295,6 +299,7 @@ export function NewsSlidePage({
                       styles.digestText,
                       {
                         color: theme.mutedForeground,
+                        ...contentTextDirection(point),
                         fontFamily: fontForText(point, 'body'),
                       },
                     ]}
@@ -311,6 +316,7 @@ export function NewsSlidePage({
                 styles.excerpt,
                 {
                   color: theme.mutedForeground,
+                  ...contentTextDirection(slide.featured.excerpt),
                   fontFamily: fontForText(slide.featured.excerpt, 'body'),
                 },
               ]}
@@ -318,27 +324,72 @@ export function NewsSlidePage({
               {slide.featured.excerpt}
             </Text>
           ) : null}
-        </Pressable>
-        <View style={styles.featuredFooter}>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => onOpenCoverage(slide.featured)}
-            style={[styles.coverageButton, { borderColor: theme.border }]}
-          >
-            <Layers3 color={theme.accent} size={15} />
-            <Text
+          <View style={[styles.storyBadges, isRTL && styles.rowRtl]}>
+            {!!slide.featured.category && (
+              <View
+                style={[
+                  styles.storyBadge,
+                  { backgroundColor: theme.card, borderColor: theme.border },
+                ]}
+              >
+                <Tag color={theme.accent} size={12} />
+                <Text
+                  style={[
+                    styles.storyBadgeText,
+                    { color: theme.foreground, fontFamily: font('bold') },
+                  ]}
+                >
+                  {slide.featured.category}
+                </Text>
+              </View>
+            )}
+            <View
               style={[
-                styles.coverageButtonText,
-                { color: theme.foreground, fontFamily: font('bold') },
+                styles.storyBadge,
+                { backgroundColor: theme.card, borderColor: theme.border },
               ]}
             >
-              {t('news.coveredBy', {
-                count:
-                  slide.featured.source_count || slide.featured.member_count,
-              })}
-            </Text>
-          </Pressable>
-          <View style={styles.sourceMeta}>
+              <Clock3 color={theme.accent} size={12} />
+              <Text
+                style={[
+                  styles.storyBadgeText,
+                  { color: theme.mutedForeground, fontFamily: font('medium') },
+                ]}
+              >
+                {t('news.updated', { time: storyTime })}
+              </Text>
+            </View>
+            {lifecycle ? (
+              <View
+                style={[
+                  styles.storyBadge,
+                  {
+                    backgroundColor: `${theme.accent}1A`,
+                    borderColor: `${theme.accent}40`,
+                  },
+                ]}
+              >
+                <TrendingUp color={theme.accent} size={12} />
+                <Text
+                  style={[
+                    styles.storyBadgeText,
+                    { color: theme.accent, fontFamily: font('bold') },
+                  ]}
+                >
+                  {t(`news.lifecycle.${lifecycle}`)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </Pressable>
+        <View
+          style={[
+            styles.featuredFooter,
+            isRTL && styles.rowRtl,
+            { borderBottomColor: theme.border },
+          ]}
+        >
+          <View style={[styles.sourceMeta, isRTL && styles.rowRtl]}>
             {slide.featured.source_image_url ? (
               <Image
                 contentFit="cover"
@@ -350,73 +401,70 @@ export function NewsSlidePage({
               numberOfLines={1}
               style={[
                 styles.sourceName,
-                { color: theme.mutedForeground, fontFamily: font('body') },
+                {
+                  color: theme.mutedForeground,
+                  ...contentTextDirection(slide.featured.source_name),
+                  fontFamily: font('body'),
+                },
               ]}
             >
               {slide.featured.source_name}
             </Text>
-            <Clock3 color={theme.mutedForeground} size={11} />
-            <Text
-              style={[
-                styles.storyTime,
-                { color: theme.mutedForeground, fontFamily: font('mono') },
-              ]}
-            >
-              {storyTime}
-            </Text>
           </View>
-        </View>
-        <View style={[styles.featuredActions, isRTL && styles.rowRtl]}>
-          <Pressable
-            accessibilityLabel={
-              featuredLiked ? t('foryou.unlike') : t('foryou.like')
-            }
-            accessibilityRole="button"
-            accessibilityState={{ selected: featuredLiked }}
-            onPress={() => void toggleEngagement(slide.featured, 'like')}
-            style={styles.featuredAction}
-          >
-            <Heart
-              color={featuredLiked ? theme.accent : theme.mutedForeground}
-              fill={featuredLiked ? theme.accent : 'transparent'}
-              size={18}
-            />
-            <Text
-              style={[
-                styles.featuredActionCount,
-                { color: theme.mutedForeground, fontFamily: font('mono') },
-              ]}
+          <View style={[styles.featuredActions, isRTL && styles.rowRtl]}>
+            <Pressable
+              accessibilityLabel={
+                featuredLiked ? t('foryou.unlike') : t('foryou.like')
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: featuredLiked }}
+              onPress={() => void toggleEngagement(slide.featured, 'like')}
+              style={styles.featuredAction}
             >
-              {slide.featured.like_count +
-                Number(featuredLiked) -
-                Number(slide.featured.is_liked)}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityLabel={
-              featuredBookmarked
-                ? t('foryou.removeBookmark')
-                : t('foryou.bookmark')
-            }
-            accessibilityRole="button"
-            accessibilityState={{ selected: featuredBookmarked }}
-            onPress={() => void toggleEngagement(slide.featured, 'bookmark')}
-            style={styles.featuredAction}
-          >
-            <Bookmark
-              color={featuredBookmarked ? theme.accent : theme.mutedForeground}
-              fill={featuredBookmarked ? theme.accent : 'transparent'}
-              size={18}
-            />
-          </Pressable>
-          <Pressable
-            accessibilityLabel={t('foryou.share')}
-            accessibilityRole="button"
-            onPress={() => void shareStory(slide.featured)}
-            style={styles.featuredAction}
-          >
-            <Share2 color={theme.mutedForeground} size={18} />
-          </Pressable>
+              <Heart
+                color={featuredLiked ? theme.accent : theme.mutedForeground}
+                fill={featuredLiked ? theme.accent : 'transparent'}
+                size={18}
+              />
+              <Text
+                style={[
+                  styles.featuredActionCount,
+                  { color: theme.mutedForeground, fontFamily: font('mono') },
+                ]}
+              >
+                {slide.featured.like_count +
+                  Number(featuredLiked) -
+                  Number(slide.featured.is_liked)}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityLabel={
+                featuredBookmarked
+                  ? t('foryou.removeBookmark')
+                  : t('foryou.bookmark')
+              }
+              accessibilityRole="button"
+              accessibilityState={{ selected: featuredBookmarked }}
+              onPress={() => void toggleEngagement(slide.featured, 'bookmark')}
+              style={styles.featuredAction}
+            >
+              <Bookmark
+                color={
+                  featuredBookmarked ? theme.accent : theme.mutedForeground
+                }
+                fill={featuredBookmarked ? theme.accent : 'transparent'}
+                size={18}
+              />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('foryou.share')}
+              accessibilityRole="button"
+              onPress={() => void shareStory(slide.featured)}
+              style={styles.featuredAction}
+            >
+              <Share2 color={theme.mutedForeground} size={18} />
+            </Pressable>
+          </View>
         </View>
         <Text
           style={[
@@ -436,169 +484,211 @@ export function NewsSlidePage({
             const ReaderArrow = isRTL ? ChevronLeft : ChevronRight;
             const liked = engaged(story, 'like');
             const bookmarked = engaged(story, 'bookmark');
+            const relatedImage = story.thumbnail_url ?? story.source_image_url;
             return (
               <View
                 key={story.story_id}
                 style={[
                   styles.related,
-                  isRTL && styles.relatedRtl,
                   {
                     backgroundColor: theme.card,
                     borderColor: theme.border,
                   },
                 ]}
               >
-                <Pressable
-                  accessibilityLabel={
-                    canExpand ? t('news.expandRelated', { title }) : undefined
-                  }
-                  accessibilityRole={canExpand ? 'button' : undefined}
-                  disabled={!canExpand}
-                  onPress={() =>
-                    setExpandedRelatedId((current) =>
-                      current === story.story_id ? null : story.story_id,
-                    )
-                  }
-                  style={[styles.relatedMain, isRTL && styles.relatedMainRtl]}
+                <View
+                  style={[styles.relatedHeader, isRTL && styles.relatedRtl]}
                 >
-                  <View style={styles.relatedCopy}>
-                    <View
-                      style={[styles.relatedKicker, isRTL && styles.rowRtl]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.relatedFormat,
-                          { color: theme.accent, fontFamily: font('bold') },
-                        ]}
+                  <Pressable
+                    accessibilityLabel={
+                      canExpand ? t('news.expandRelated', { title }) : undefined
+                    }
+                    accessibilityRole={canExpand ? 'button' : undefined}
+                    disabled={!canExpand}
+                    onPress={() =>
+                      setExpandedRelatedId((current) =>
+                        current === story.story_id ? null : story.story_id,
+                      )
+                    }
+                    style={[styles.relatedMain, isRTL && styles.relatedMainRtl]}
+                  >
+                    <View style={styles.relatedCopy}>
+                      <View
+                        style={[styles.relatedKicker, isRTL && styles.rowRtl]}
                       >
-                        {story.format || story.source || t('news.feedLabel')}
-                      </Text>
-                      <View style={styles.relatedTime}>
-                        <Clock3 color={theme.mutedForeground} size={10} />
                         <Text
+                          numberOfLines={1}
                           style={[
-                            styles.relatedTimeText,
+                            styles.relatedFormat,
                             {
-                              color: theme.mutedForeground,
-                              fontFamily: font('mono'),
+                              color: theme.accent,
+                              fontFamily: font('bold'),
+                              textAlign: isRTL ? 'right' : 'left',
                             },
                           ]}
                         >
-                          {relativeStoryTime(story.published_at, i18n.language)}
+                          {story.format || story.source || t('news.feedLabel')}
                         </Text>
+                        <View
+                          style={[
+                            styles.relatedTime,
+                            isRTL
+                              ? styles.relatedTimeRtl
+                              : styles.relatedTimeLtr,
+                          ]}
+                        >
+                          <Clock3 color={theme.mutedForeground} size={10} />
+                          <Text
+                            style={[
+                              styles.relatedTimeText,
+                              {
+                                color: theme.mutedForeground,
+                                fontFamily: font('mono'),
+                              },
+                            ]}
+                          >
+                            {relativeStoryTime(
+                              story.published_at,
+                              i18n.language,
+                            )}
+                          </Text>
+                        </View>
                       </View>
-                    </View>
-                    <Text
-                      numberOfLines={expanded ? 4 : 2}
-                      style={[
-                        styles.relatedTitle,
-                        {
-                          color: theme.foreground,
-                          fontFamily: fontForText(title, 'editorial'),
-                          textAlign: isRTL ? 'right' : 'left',
-                        },
-                      ]}
-                    >
-                      {title}
-                    </Text>
-                    {expanded ? (
                       <Text
-                        numberOfLines={4}
+                        numberOfLines={expanded ? undefined : 2}
                         style={[
-                          styles.relatedExpansion,
+                          styles.relatedTitle,
                           {
-                            color: theme.mutedForeground,
-                            fontFamily: fontForText(expansion, 'body'),
-                            textAlign: isRTL ? 'right' : 'left',
+                            color: theme.foreground,
+                            fontFamily: fontForText(title, 'editorial'),
+                            ...contentTextDirection(title),
                           },
                         ]}
                       >
-                        {expansion}
+                        {title}
                       </Text>
-                    ) : null}
+                    </View>
+                    {relatedImage ? (
+                      <Image
+                        contentFit="cover"
+                        source={relatedImage}
+                        style={styles.relatedImage}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.relatedImage,
+                          {
+                            backgroundColor: theme.card,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.relatedImageFallback,
+                            { color: theme.accent, fontFamily: font('bold') },
+                          ]}
+                        >
+                          {(story.source_name || story.source || 'W')
+                            .trim()
+                            .slice(0, 1)
+                            .toUpperCase()}
+                        </Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  <View
+                    style={[
+                      styles.relatedActions,
+                      isRTL && styles.relatedActionsRtl,
+                    ]}
+                  >
+                    <Pressable
+                      accessibilityLabel={
+                        liked ? t('foryou.unlike') : t('foryou.like')
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: liked }}
+                      hitSlop={6}
+                      onPress={() => void toggleEngagement(story, 'like')}
+                      style={styles.relatedAction}
+                    >
+                      <Heart
+                        color={liked ? theme.accent : theme.mutedForeground}
+                        fill={liked ? theme.accent : 'transparent'}
+                        size={15}
+                      />
+                      <Text
+                        style={[
+                          styles.relatedActionCount,
+                          {
+                            color: theme.mutedForeground,
+                            fontFamily: font('mono'),
+                          },
+                        ]}
+                      >
+                        {story.like_count +
+                          Number(liked) -
+                          Number(story.is_liked)}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      accessibilityLabel={
+                        bookmarked
+                          ? t('foryou.removeBookmark')
+                          : t('foryou.bookmark')
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: bookmarked }}
+                      hitSlop={6}
+                      onPress={() => void toggleEngagement(story, 'bookmark')}
+                      style={styles.relatedAction}
+                    >
+                      <Bookmark
+                        color={
+                          bookmarked ? theme.accent : theme.mutedForeground
+                        }
+                        fill={bookmarked ? theme.accent : 'transparent'}
+                        size={15}
+                      />
+                    </Pressable>
+                  </View>
+                  {canOpenReader ? (
+                    <Pressable
+                      accessibilityLabel={t('news.openReader', { title })}
+                      accessibilityRole="button"
+                      hitSlop={8}
+                      onPress={() => onOpenStory(story.story_id, story.lead_id)}
+                      style={[
+                        styles.readerButton,
+                        isRTL && styles.readerButtonRtl,
+                      ]}
+                    >
+                      <ReaderArrow color={theme.mutedForeground} size={18} />
+                    </Pressable>
+                  ) : null}
+                </View>
+                {expanded ? (
+                  <View
+                    style={[
+                      styles.relatedExpandedPanel,
+                      { borderTopColor: theme.border },
+                    ]}
+                  >
                     <Text
                       style={[
-                        styles.relatedMeta,
+                        styles.relatedExpansion,
                         {
                           color: theme.mutedForeground,
-                          fontFamily: font('mono'),
-                          textAlign: isRTL ? 'right' : 'left',
+                          fontFamily: fontForText(expansion, 'body'),
+                          ...contentTextDirection(expansion),
                         },
                       ]}
                     >
-                      {story.source_name
-                        ? `${story.source_name} · ${story.member_count} ${t('news.members')}`
-                        : `${story.member_count} ${t('news.members')}`}
+                      {expansion}
                     </Text>
                   </View>
-                  {story.thumbnail_url ? (
-                    <Image
-                      contentFit="cover"
-                      source={story.thumbnail_url}
-                      style={styles.relatedImage}
-                    />
-                  ) : null}
-                </Pressable>
-                <View style={styles.relatedActions}>
-                  <Pressable
-                    accessibilityLabel={
-                      liked ? t('foryou.unlike') : t('foryou.like')
-                    }
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: liked }}
-                    hitSlop={6}
-                    onPress={() => void toggleEngagement(story, 'like')}
-                    style={styles.relatedAction}
-                  >
-                    <Heart
-                      color={liked ? theme.accent : theme.mutedForeground}
-                      fill={liked ? theme.accent : 'transparent'}
-                      size={15}
-                    />
-                    <Text
-                      style={[
-                        styles.relatedActionCount,
-                        {
-                          color: theme.mutedForeground,
-                          fontFamily: font('mono'),
-                        },
-                      ]}
-                    >
-                      {story.like_count +
-                        Number(liked) -
-                        Number(story.is_liked)}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel={
-                      bookmarked
-                        ? t('foryou.removeBookmark')
-                        : t('foryou.bookmark')
-                    }
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: bookmarked }}
-                    hitSlop={6}
-                    onPress={() => void toggleEngagement(story, 'bookmark')}
-                    style={styles.relatedAction}
-                  >
-                    <Bookmark
-                      color={bookmarked ? theme.accent : theme.mutedForeground}
-                      fill={bookmarked ? theme.accent : 'transparent'}
-                      size={15}
-                    />
-                  </Pressable>
-                </View>
-                {canOpenReader ? (
-                  <Pressable
-                    accessibilityLabel={t('news.openReader', { title })}
-                    accessibilityRole="button"
-                    hitSlop={8}
-                    onPress={() => onOpenStory(story.story_id, story.lead_id)}
-                    style={styles.readerButton}
-                  >
-                    <ReaderArrow color={theme.mutedForeground} size={18} />
-                  </Pressable>
                 ) : null}
               </View>
             );
@@ -632,8 +722,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   featured: {
-    borderBottomWidth: 1,
-    paddingBottom: spacing.sm,
+    paddingBottom: 0,
   },
   hero: {
     backgroundColor: colors.card,
@@ -641,6 +730,22 @@ const styles = StyleSheet.create({
     height: 178,
     width: '100%',
   },
+  heroFrame: { position: 'relative' },
+  coverageOverlay: {
+    alignItems: 'center',
+    backgroundColor: 'rgba(12,12,12,0.78)',
+    borderColor: 'rgba(248,245,242,0.8)',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    bottom: spacing.sm,
+    flexDirection: 'row',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    position: 'absolute',
+    right: spacing.sm,
+  },
+  coverageOverlayText: { color: colors.inkInverse, ...typeScale.micro },
   sourceStrip: {
     alignItems: 'center',
     borderRadius: radii.compact,
@@ -657,7 +762,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 3,
-    marginTop: spacing.xs,
+    marginTop: spacing.sm,
   },
   storyBadge: {
     alignItems: 'center',
@@ -687,16 +792,17 @@ const styles = StyleSheet.create({
   digestText: { ...typeScale.body, flex: 1 },
   featuredFooter: {
     alignItems: 'center',
+    borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: spacing.xs,
     minHeight: componentMetrics.compactControl,
+    paddingBottom: spacing.xs,
   },
   featuredActions: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: spacing.sm,
-    justifyContent: 'flex-end',
     marginTop: 0,
   },
   rowRtl: { flexDirection: 'row-reverse' },
@@ -704,7 +810,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     gap: 4,
-    minHeight: componentMetrics.compactControl,
+    minHeight: 32,
     justifyContent: 'center',
   },
   featuredActionCount: { ...typeScale.label },
@@ -714,11 +820,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     flexDirection: 'row',
     gap: 5,
-    minHeight: 32,
-    paddingHorizontal: spacing.sm,
+    minHeight: 24,
+    paddingHorizontal: 6,
   },
   coverageButtonText: { ...typeScale.label },
-  storyTime: { ...typeScale.micro },
   sourceMeta: {
     alignItems: 'center',
     flex: 1,
@@ -729,8 +834,8 @@ const styles = StyleSheet.create({
   sourceAvatar: {
     borderRadius: radii.compact,
     borderWidth: 1,
-    height: 18,
-    width: 18,
+    height: 22,
+    width: 22,
   },
   sourceName: { ...typeScale.meta, flexShrink: 1, maxWidth: 74 },
   relatedLabel: {
@@ -738,74 +843,113 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.bodyBold,
     ...typeScale.meta,
     letterSpacing: 1.2,
-    marginTop: spacing.sm,
+    // The featured action rail already establishes the section boundary.
+    // Adding another top gap makes "Related" look detached and wastes a
+    // noticeable slice of the fixed-height news page.
+    marginTop: 0,
   },
   related: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     backgroundColor: colors.card,
     borderColor: colors.ink,
     borderRadius: radii.compact,
     borderWidth: 1,
-    // LTR: image at left, reader arrow at right. RTL flips those physical
-    // endpoints: image at right, reader arrow at left.
-    flexDirection: 'row',
-    gap: 6,
     marginTop: spacing.xs,
-    minHeight: 54,
-    padding: 6,
+    padding: 10,
+  },
+  relatedHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.md,
+    minHeight: 56,
+    position: 'relative',
   },
   relatedRtl: { flexDirection: 'row-reverse' },
   relatedMain: {
     alignItems: 'center',
     flex: 1,
     flexDirection: 'row-reverse',
-    gap: 6,
+    gap: spacing.md,
   },
   relatedMainRtl: { flexDirection: 'row' },
-  relatedCopy: { flex: 1 },
+  relatedCopy: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    minWidth: 0,
+    paddingBottom: 26,
+  },
   relatedKicker: {
-    alignItems: 'center',
+    alignItems: 'baseline',
     flexDirection: 'row',
     gap: spacing.xs,
-    justifyContent: 'space-between',
-    marginBottom: 2,
+    marginBottom: 3,
+    position: 'relative',
   },
-  relatedFormat: { ...typeScale.micro, flex: 1, letterSpacing: 0.6 },
-  relatedTime: { alignItems: 'center', flexDirection: 'row', gap: 2 },
+  relatedFormat: {
+    fontSize: 8,
+    letterSpacing: 0.7,
+    lineHeight: 11,
+    maxWidth: '65%',
+  },
+  relatedTime: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 2,
+    position: 'absolute',
+  },
+  relatedTimeLtr: { right: 0 },
+  relatedTimeRtl: { left: 0, flexDirection: 'row-reverse' },
   relatedTimeText: { ...typeScale.micro },
   relatedTitle: {
     color: colors.ink,
     fontFamily: fontFamilies.editorial,
-    ...typeScale.cardTitle,
-  },
-  relatedMeta: {
-    color: colors.inkMuted,
-    fontFamily: fontFamilies.mono,
-    ...typeScale.label,
-    marginTop: 3,
+    fontSize: 14,
+    lineHeight: 20,
   },
   relatedExpansion: {
     ...typeScale.body,
     lineHeight: 19,
-    marginTop: 4,
+  },
+  relatedExpandedPanel: {
+    borderTopWidth: 1,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingTop: spacing.md,
   },
   relatedImage: {
+    alignItems: 'center',
     backgroundColor: colors.card,
-    height: 44,
-    width: 60,
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
   },
+  relatedImageFallback: { fontSize: 20 },
   readerButton: {
     alignItems: 'center',
-    alignSelf: 'stretch',
+    bottom: 0,
     justifyContent: 'center',
-    minWidth: componentMetrics.compactControl,
+    minHeight: 24,
+    minWidth: 24,
+    position: 'absolute',
+    right: 0,
   },
-  relatedActions: { gap: 2 },
+  readerButtonRtl: { left: 0, right: undefined },
+  relatedActions: {
+    alignItems: 'center',
+    bottom: 0,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    position: 'absolute',
+    right: 28,
+  },
+  relatedActionsRtl: { left: 28, right: undefined },
   relatedAction: {
     alignItems: 'center',
     flexDirection: 'row',
     gap: 2,
-    minHeight: 22,
+    minHeight: 24,
   },
   relatedActionCount: { ...typeScale.micro },
   noRelated: {

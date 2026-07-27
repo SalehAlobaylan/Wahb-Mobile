@@ -16,13 +16,17 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
+  ArrowRight,
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   Flag,
   Share2,
   X,
 } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
+import { useRouter } from 'expo-router';
 
 import { HttpError, type ArticleContent } from '@/core/api';
 import { captureException } from '@/core/diagnostics/diagnostics';
@@ -43,9 +47,12 @@ import {
   typeScale,
 } from '@/design/tokens';
 import { useWahbTheme } from '@/design/theme';
-import { useWahbTypography } from '@/design/typography';
+import { fontForText, useWahbTypography } from '@/design/typography';
 import { goBackOrReplace } from '@/core/navigation/go-back';
-import { getArticleCoverageContext } from './article-coverage-context';
+import {
+  getArticleCoverageContext,
+  setArticleCoverageContext,
+} from './article-coverage-context';
 
 import {
   loadArticleSnapshot,
@@ -79,12 +86,34 @@ function readingMinutes(article: ArticleContent): number {
   );
 }
 
-function formatPublishedAt(value: string | null | undefined): string | null {
+type ContentDirection = {
+  textAlign: 'left' | 'right';
+  writingDirection: 'ltr' | 'rtl';
+};
+
+function directionForText(value: string | null | undefined): ContentDirection {
+  const isArabic = /[\u0600-\u06FF\u0750-\u077F]/u.test(value ?? '');
+  return {
+    textAlign: isArabic ? 'right' : 'left',
+    writingDirection: isArabic ? 'rtl' : 'ltr',
+  };
+}
+
+function formatPublishedAt(
+  value: string | null | undefined,
+  language: string,
+): string | null {
   if (!value) {
     return null;
   }
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString();
+  return Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleDateString(language.startsWith('ar') ? 'ar-SA' : 'en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      });
 }
 
 function sourcePromptFor(value: string): SourcePrompt {
@@ -104,13 +133,14 @@ function sourcePromptFor(value: string): SourcePrompt {
 }
 
 export function ArticleReaderScreen({ id }: { id?: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const router = useRouter();
   const db = useSQLiteContext();
   const outbox = useOutbox();
   const reducedMotion = useReducedMotion();
   const { clients, subject } = useAuth();
   const { theme } = useWahbTheme();
-  const { font } = useWahbTypography();
+  const { font, isRTL } = useWahbTypography();
   const scrollRef = useRef<ScrollView>(null);
   const positionRef = useRef(0);
   const lastPersistAt = useRef(0);
@@ -307,14 +337,92 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
     t('article.untitled');
   const body =
     article.translated_body_text || article.body_text || article.excerpt || '';
-  const publishedAt = formatPublishedAt(article.published_at);
+  const publishedAt = formatPublishedAt(article.published_at, i18n.language);
   const coverage = getArticleCoverageContext(id);
+  const titleDirection = directionForText(title);
+  const sourceName = article.author || article.source_name || 'Wahb';
+  const sourceDirection = directionForText(sourceName);
+  const heroImage = article.thumbnail_url || article.source_image_url;
+  const BackIcon = isRTL ? ArrowRight : ArrowLeft;
+  const CoverageChevron = isRTL ? ChevronLeft : ChevronRight;
+  const metadata = [
+    publishedAt,
+    t('article.readTime', { count: readingMinutes(article) }),
+  ].filter(Boolean);
+
+  const openCoverageMember = (
+    member: NonNullable<typeof coverage>['members'][number],
+  ) => {
+    if (!coverage) return;
+    setArticleCoverageContext(member.id, coverage);
+    router.push({ pathname: '/article/[id]', params: { id: member.id } });
+  };
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: theme.background }]}>
+      <View
+        style={[
+          styles.header,
+          {
+            backgroundColor: theme.background,
+            borderBottomColor: theme.border,
+            flexDirection: isRTL ? 'row-reverse' : 'row',
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityLabel={t('article.back')}
+          accessibilityRole="button"
+          onPress={() => goBackOrReplace('/news')}
+          style={[styles.headerButton, { borderColor: theme.border }]}
+          testID="article-reader-back"
+        >
+          <BackIcon color={theme.foreground} size={21} />
+        </Pressable>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.headerTitle,
+            { color: theme.foreground, fontFamily: font('bold') },
+          ]}
+        >
+          {article.source_name || 'WAHB'}
+        </Text>
+        <View
+          style={[
+            styles.headerActions,
+            { flexDirection: isRTL ? 'row-reverse' : 'row' },
+          ]}
+        >
+          <Pressable
+            accessibilityLabel={
+              isBookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+            }
+            accessibilityRole="button"
+            onPress={() => void toggleBookmark()}
+            style={styles.headerAction}
+          >
+            <Bookmark
+              color={isBookmarked ? theme.accent : theme.foreground}
+              fill={isBookmarked ? theme.accent : 'transparent'}
+              size={20}
+            />
+          </Pressable>
+          <Pressable
+            accessibilityLabel={t('foryou.share')}
+            accessibilityRole="button"
+            onPress={() => void shareArticle()}
+            style={styles.headerAction}
+          >
+            <Share2 color={theme.foreground} size={20} />
+          </Pressable>
+        </View>
+      </View>
       <ScrollView
-        contentContainerStyle={styles.content}
-        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: layoutMetrics.pageBottom + spacing.xl },
+        ]}
         onMomentumScrollEnd={(event) =>
           persistPosition(event.nativeEvent.contentOffset.y, true)
         }
@@ -322,49 +430,6 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
         ref={scrollRef}
         scrollEventThrottle={250}
       >
-        <View style={styles.topRow}>
-          <Pressable
-            accessibilityLabel={t('article.back')}
-            accessibilityRole="button"
-            onPress={() => goBackOrReplace('/news')}
-            style={styles.iconButton}
-          >
-            <ArrowLeft color={theme.foreground} size={22} />
-          </Pressable>
-          <View style={styles.actions}>
-            <NewsNowPlayingTile />
-            <Pressable
-              accessibilityLabel={
-                isBookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
-              }
-              accessibilityRole="button"
-              onPress={() => void toggleBookmark()}
-              style={styles.iconButton}
-            >
-              <Bookmark
-                color={theme.foreground}
-                fill={isBookmarked ? theme.foreground : 'transparent'}
-                size={20}
-              />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.share')}
-              accessibilityRole="button"
-              onPress={() => void shareArticle()}
-              style={styles.iconButton}
-            >
-              <Share2 color={theme.foreground} size={20} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('moderation.report')}
-              accessibilityRole="button"
-              onPress={() => setIsReportVisible(true)}
-              style={styles.iconButton}
-            >
-              <Flag color={theme.foreground} size={20} />
-            </Pressable>
-          </View>
-        </View>
         {query.data.source === 'offline-cache' ? (
           <Text
             accessibilityLiveRegion="polite"
@@ -381,79 +446,154 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
             {t('article.offlineCopy')}
           </Text>
         ) : null}
-        {article.thumbnail_url ? (
-          <Image
-            contentFit="cover"
-            source={article.thumbnail_url}
-            style={styles.hero}
-          />
+        {heroImage ? (
+          <Image contentFit="cover" source={heroImage} style={styles.hero} />
         ) : null}
-        {isTranslated ? (
+        <View style={styles.articleIntro}>
+          {isTranslated ? (
+            <Text
+              style={[
+                styles.translation,
+                {
+                  color: theme.accent,
+                  fontFamily: font('bold'),
+                  textAlign: isRTL ? 'right' : 'left',
+                },
+              ]}
+            >
+              {t('article.translationLabel', {
+                language:
+                  article.translation_language ||
+                  t('article.translationUnknown'),
+              })}
+            </Text>
+          ) : null}
           <Text
             style={[
-              styles.translation,
-              { color: theme.accent, fontFamily: font('bold') },
+              styles.title,
+              {
+                color: theme.foreground,
+                fontFamily: fontForText(title, 'editorial'),
+                ...titleDirection,
+              },
             ]}
           >
-            {t('article.translationLabel', {
-              language:
-                article.translation_language || t('article.translationUnknown'),
-            })}
+            {title}
           </Text>
-        ) : null}
-        <Text
-          style={[
-            styles.title,
-            { color: theme.foreground, fontFamily: font('editorial') },
-          ]}
-        >
-          {title}
-        </Text>
-        <Text
-          style={[
-            styles.meta,
-            { color: theme.mutedForeground, fontFamily: font('mono') },
-          ]}
-        >
-          {[
-            article.source_name,
-            publishedAt,
-            t('article.readTime', { count: readingMinutes(article) }),
-          ]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
+          <View
+            style={[
+              styles.byline,
+              {
+                borderColor: theme.border,
+                flexDirection: isRTL ? 'row-reverse' : 'row',
+              },
+            ]}
+          >
+            {article.source_image_url ? (
+              <Image
+                contentFit="cover"
+                source={article.source_image_url}
+                style={[styles.sourceAvatar, { borderColor: theme.border }]}
+              />
+            ) : (
+              <View
+                style={[
+                  styles.sourceAvatar,
+                  styles.sourceFallback,
+                  { backgroundColor: theme.muted, borderColor: theme.border },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.sourceInitial,
+                    {
+                      color: theme.accent,
+                      fontFamily: fontForText(sourceName, 'bold'),
+                    },
+                  ]}
+                >
+                  {sourceName.trim().charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            )}
+            <View style={styles.bylineCopy}>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.sourceName,
+                  {
+                    color: theme.foreground,
+                    fontFamily: fontForText(sourceName, 'bold'),
+                    ...sourceDirection,
+                  },
+                ]}
+              >
+                {sourceName}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.meta,
+                  {
+                    color: theme.mutedForeground,
+                    fontFamily: font('mono'),
+                    textAlign: isRTL ? 'right' : 'left',
+                    writingDirection: isRTL ? 'rtl' : 'ltr',
+                  },
+                ]}
+              >
+                {metadata.join(' · ')}
+              </Text>
+            </View>
+          </View>
+        </View>
         {article.original_url ? (
           <Pressable
             accessibilityRole="button"
             onPress={requestOriginalSource}
-            style={styles.sourceButton}
+            style={[
+              styles.sourceButton,
+              {
+                borderColor: theme.border,
+                flexDirection: isRTL ? 'row-reverse' : 'row',
+              },
+            ]}
           >
             <ExternalLink color={theme.accent} size={17} />
             <Text
               style={[
                 styles.sourceButtonLabel,
-                { color: theme.foreground, fontFamily: font('bold') },
+                {
+                  color: theme.foreground,
+                  fontFamily: font('bold'),
+                  writingDirection: isRTL ? 'rtl' : 'ltr',
+                },
               ]}
             >
               {t('article.originalSource')}
             </Text>
           </Pressable>
         ) : null}
-        {body
-          .split(/\n+/)
-          .filter(Boolean)
-          .map((paragraph, index) => (
-            <Text
-              key={`${index}-${paragraph.slice(0, 16)}`}
-              style={[
-                styles.body,
-                { color: theme.foreground, fontFamily: font('body') },
-              ]}
-            >
-              {paragraph}
-            </Text>
-          ))}
+        <View style={styles.bodySection}>
+          {body
+            .split(/\n\s*\n|\n+/)
+            .filter(Boolean)
+            .map((paragraph, index) => (
+              <Text
+                key={`${index}-${paragraph.slice(0, 16)}`}
+                style={[
+                  styles.body,
+                  {
+                    color: theme.foreground,
+                    fontFamily: fontForText(paragraph, 'body'),
+                    ...directionForText(paragraph),
+                  },
+                ]}
+              >
+                {paragraph}
+              </Text>
+            ))}
+        </View>
         {coverage?.members.length ? (
           <View style={[styles.coverage, { borderTopColor: theme.border }]}>
             <Text
@@ -468,42 +608,93 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
               .filter((member) => member.id !== article.id)
               .slice(0, 3)
               .map((member) => (
-                <View
+                <Pressable
+                  accessibilityRole="button"
                   key={member.id}
+                  onPress={() => openCoverageMember(member)}
                   style={[
                     styles.coverageCard,
-                    { backgroundColor: theme.card, borderColor: theme.border },
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      flexDirection: isRTL ? 'row-reverse' : 'row',
+                    },
                   ]}
                 >
-                  <Text
-                    numberOfLines={2}
-                    style={[
-                      styles.coverageTitle,
-                      {
-                        color: theme.foreground,
-                        fontFamily: font('editorial'),
-                      },
-                    ]}
-                  >
-                    {member.title || member.source_name}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.coverageSource,
-                      {
-                        color: theme.mutedForeground,
-                        fontFamily: font('mono'),
-                      },
-                    ]}
-                  >
-                    {member.source_name}
-                  </Text>
-                </View>
+                  <View style={styles.coverageCopy}>
+                    <Text
+                      numberOfLines={2}
+                      style={[
+                        styles.coverageTitle,
+                        {
+                          color: theme.foreground,
+                          fontFamily: fontForText(
+                            member.title || member.source_name,
+                            'editorial',
+                          ),
+                          ...directionForText(
+                            member.title || member.source_name,
+                          ),
+                        },
+                      ]}
+                    >
+                      {member.title || member.source_name}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.coverageSource,
+                        {
+                          color: theme.mutedForeground,
+                          fontFamily: fontForText(member.source_name, 'mono'),
+                          ...directionForText(member.source_name),
+                        },
+                      ]}
+                    >
+                      {member.source_name}
+                    </Text>
+                  </View>
+                  <CoverageChevron color={theme.mutedForeground} size={18} />
+                </Pressable>
               ))}
           </View>
         ) : null}
+        <Pressable
+          accessibilityLabel={t('moderation.report')}
+          accessibilityRole="button"
+          onPress={() => setIsReportVisible(true)}
+          style={[
+            styles.reportAction,
+            {
+              borderColor: theme.border,
+              flexDirection: isRTL ? 'row-reverse' : 'row',
+            },
+          ]}
+        >
+          <Flag color={theme.mutedForeground} size={17} />
+          <Text
+            style={[
+              styles.reportLabel,
+              {
+                color: theme.mutedForeground,
+                fontFamily: font('medium'),
+                writingDirection: isRTL ? 'rtl' : 'ltr',
+              },
+            ]}
+          >
+            {t('moderation.report')}
+          </Text>
+        </Pressable>
       </ScrollView>
+      <View
+        pointerEvents="box-none"
+        style={[
+          styles.nowPlaying,
+          { alignItems: isRTL ? 'flex-start' : 'flex-end' },
+        ]}
+      >
+        <NewsNowPlayingTile />
+      </View>
       <Modal
         animationType={reducedMotion ? 'none' : 'fade'}
         onRequestClose={() => setSourcePrompt(null)}
@@ -584,23 +775,31 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: layoutMetrics.pageBottom,
-    paddingHorizontal: layoutMetrics.pageGutter,
-    paddingTop: layoutMetrics.pageTop,
   },
-  topRow: {
+  header: {
     alignItems: 'center',
+    borderBottomWidth: 1,
     flexDirection: 'row',
+    height: 60,
     justifyContent: 'space-between',
+    paddingHorizontal: layoutMetrics.pageGutter,
   },
-  actions: { flexDirection: 'row', gap: spacing.sm },
-  iconButton: {
+  headerButton: {
     alignItems: 'center',
     borderColor: colors.ink,
     borderRadius: radii.compact,
     borderWidth: 1,
-    height: 44,
+    height: 40,
     justifyContent: 'center',
-    width: 44,
+    width: 40,
+  },
+  headerTitle: { ...typeScale.label, letterSpacing: 0.8, maxWidth: '42%' },
+  headerActions: { alignItems: 'center', gap: spacing.xs, minWidth: 80 },
+  headerAction: {
+    alignItems: 'center',
+    height: 40,
+    justifyContent: 'center',
+    width: 40,
   },
   offline: {
     backgroundColor: colors.card,
@@ -609,43 +808,68 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontFamily: fontFamilies.bodyBold,
     ...typeScale.meta,
-    marginTop: spacing.md,
+    marginHorizontal: layoutMetrics.pageGutter,
+    marginTop: spacing.sm,
     padding: spacing.sm,
   },
   hero: {
     backgroundColor: colors.card,
-    height: 250,
-    marginTop: spacing.md,
+    height: 220,
+    marginTop: spacing.sm,
     width: '100%',
+  },
+  articleIntro: {
+    paddingBottom: spacing.sm,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: spacing.lg,
   },
   translation: {
     color: colors.pressRed,
     fontFamily: fontFamilies.bodyBold,
     ...typeScale.meta,
-    marginTop: spacing.md,
+    marginBottom: spacing.sm,
     textTransform: 'uppercase',
   },
   title: {
     color: colors.ink,
     fontFamily: fontFamilies.editorial,
     ...typeScale.readerTitle,
-    marginTop: spacing.md,
+    marginTop: spacing.xs,
   },
+  byline: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderTopWidth: 1,
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  sourceAvatar: {
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    height: 40,
+    overflow: 'hidden',
+    width: 40,
+  },
+  sourceFallback: { alignItems: 'center', justifyContent: 'center' },
+  sourceInitial: { ...typeScale.heading },
+  bylineCopy: { flex: 1, minWidth: 0 },
+  sourceName: { ...typeScale.body, fontWeight: '700' },
   meta: {
     color: colors.inkMuted,
     fontFamily: fontFamilies.mono,
     ...typeScale.meta,
-    marginTop: spacing.sm,
+    marginTop: 2,
   },
   sourceButton: {
     alignItems: 'center',
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     borderColor: colors.ink,
     borderRadius: radii.compact,
     borderWidth: 1,
     flexDirection: 'row',
     gap: spacing.xs,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     minHeight: 44,
     paddingHorizontal: spacing.sm,
   },
@@ -657,14 +881,19 @@ const styles = StyleSheet.create({
   body: {
     color: colors.ink,
     fontFamily: fontFamilies.body,
-    fontSize: 16,
-    lineHeight: 26,
-    marginTop: spacing.md,
+    fontSize: 17,
+    lineHeight: 30,
+    marginBottom: spacing.md,
+  },
+  bodySection: {
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: spacing.lg,
   },
   coverage: {
     borderTopWidth: 1,
-    marginTop: spacing.xl,
-    paddingTop: spacing.md,
+    marginHorizontal: layoutMetrics.pageGutter,
+    marginTop: spacing.lg,
+    paddingTop: spacing.lg,
   },
   coverageLabel: {
     ...typeScale.meta,
@@ -672,13 +901,34 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   coverageCard: {
+    alignItems: 'center',
     borderRadius: radii.compact,
     borderWidth: 1,
+    gap: spacing.sm,
     marginTop: spacing.sm,
+    minHeight: 72,
     padding: spacing.sm,
   },
+  coverageCopy: { flex: 1, minWidth: 0 },
   coverageTitle: { ...typeScale.cardTitle },
   coverageSource: { ...typeScale.label, marginTop: 4 },
+  reportAction: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    borderBottomWidth: 1,
+    gap: spacing.xs,
+    marginTop: spacing.xl,
+    minHeight: 44,
+    paddingHorizontal: spacing.xs,
+  },
+  reportLabel: { ...typeScale.meta },
+  nowPlaying: {
+    bottom: spacing.md,
+    left: layoutMetrics.pageGutter,
+    pointerEvents: 'box-none',
+    position: 'absolute',
+    right: layoutMetrics.pageGutter,
+  },
   modalRoot: { flex: 1, justifyContent: 'center', padding: spacing.lg },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(26,26,26,0.48)' },
   dialog: {

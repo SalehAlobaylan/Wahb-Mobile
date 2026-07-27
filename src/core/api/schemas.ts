@@ -157,8 +157,8 @@ const newsStorySummarySchema = z
     title: z.string().optional(),
     excerpt: z.string().optional(),
     thumbnail_url: absoluteHttpUrl.optional(),
-    source_name: z.string().optional(),
     source_image_url: absoluteHttpUrl.optional(),
+    source_name: z.string().optional(),
     format: z.string().optional(),
     source: z.string().optional(),
     published_at: z.string().datetime(),
@@ -204,6 +204,7 @@ export const articleContentResponseSchema = z
         author: z.string().nullable().optional(),
         source_name: z.string().nullable().optional(),
         thumbnail_url: absoluteHttpUrl.nullable().optional(),
+        source_image_url: absoluteHttpUrl.nullable().optional(),
         original_url: absoluteHttpUrl.nullable().optional(),
         published_at: z.string().datetime().nullable().optional(),
         // These remain optional while CMS rolls out translated reader fields.
@@ -480,6 +481,7 @@ export const transcriptResponseSchema = z
         // The CMS preserves provider-native timestamp shapes. The display layer
         // normalizes this defensively because Deepgram and Whisper differ.
         word_timestamps: z.unknown().nullable().optional(),
+        segments: z.unknown().nullable().optional(),
         language: z.string().nullable().optional(),
         created_at: z.string().datetime(),
       })
@@ -487,6 +489,20 @@ export const transcriptResponseSchema = z
   })
   .passthrough()
   .transform(({ data }) => data);
+
+export const transcriptionRequestResponseSchema = z
+  .object({
+    code: z.number().int().optional(),
+    data: z
+      .object({ status: z.enum(['exists', 'processing']) })
+      .passthrough()
+      .optional(),
+    status: z.enum(['exists', 'processing']).optional(),
+  })
+  .passthrough()
+  .transform((response) => ({
+    status: response.data?.status ?? response.status!,
+  }));
 
 export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
@@ -503,6 +519,9 @@ export type RegisteredAccount = z.infer<typeof registerResponseSchema>;
 export type InteractionType = z.infer<typeof interactionTypeSchema>;
 export type CommentsResponse = z.infer<typeof commentsResponseSchema>;
 export type Transcript = z.infer<typeof transcriptResponseSchema>;
+export type TranscriptionRequest = z.infer<
+  typeof transcriptionRequestResponseSchema
+>;
 export type SavedContentResponse = z.infer<typeof savedContentResponseSchema>;
 export type SavedContentItem = SavedContentResponse['items'][number];
 export type LikedContentResponse = z.infer<typeof likedContentResponseSchema>;

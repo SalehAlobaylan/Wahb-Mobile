@@ -18,6 +18,7 @@ import {
   articleContentResponseSchema,
   newsFeedResponseSchema,
   transcriptResponseSchema,
+  transcriptionRequestResponseSchema,
   type ForYouFeedResponse,
   type ForYouSessionResponse,
   type ForYouSessionFreshnessResponse,
@@ -26,6 +27,7 @@ import {
   type NewsFeedResponse,
   type CommentsResponse,
   type Transcript,
+  type TranscriptionRequest,
   type HistoryResponse,
   type PreferencesResponse,
   type SavedContentResponse,
@@ -70,6 +72,10 @@ export type CmsApi = {
     transcriptId: string,
     signal?: AbortSignal,
   ): Promise<Transcript>;
+  requestTranscription(
+    contentId: string,
+    signal?: AbortSignal,
+  ): Promise<TranscriptionRequest>;
   createInteraction(request: CreateInteractionRequest): Promise<void>;
   deleteInteraction(request: DeleteInteractionRequest): Promise<void>;
   deleteComment(commentId: string, sessionId: string): Promise<void>;
@@ -312,6 +318,17 @@ export function createCmsApi(transport: Transport): CmsApi {
           authenticated: true,
         },
         transcriptResponseSchema,
+      );
+    },
+    requestTranscription(contentId, signal) {
+      return transport.request(
+        {
+          method: 'POST',
+          path: `/api/v1/content/${contentId}/transcribe`,
+          signal,
+          authenticated: true,
+        },
+        transcriptionRequestResponseSchema,
       );
     },
     async createInteraction({

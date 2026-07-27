@@ -1,0 +1,9 @@
+appId: com.salehspace.wahb
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: 'for-you-display-transcript'
+- assertVisible:
+    id: 'for-you-transcript-surface'
+- takeScreenshot: 'for-you-transcript-surface'

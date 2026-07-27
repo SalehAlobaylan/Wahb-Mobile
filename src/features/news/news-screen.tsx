@@ -324,10 +324,11 @@ export function NewsScreen() {
     );
   }
 
-  // The chrome is absolutely positioned. Reserve its actual 40pt control plus
-  // one editorial gutter, rather than the old oversized generic header slot.
+  // The chrome is absolutely positioned. The slide eyebrow supplies its own
+  // rhythm, so reserve only the control and a compact clearance. A full gutter
+  // here leaves a visibly empty band before the hero on iPhone screens.
   const contentTopPadding =
-    insets.top + componentMetrics.chromeControl + spacing.md;
+    insets.top + componentMetrics.chromeControl + spacing.xs;
   const collapsedSheetHeight = newsCollapsedSheetBaseHeight + insets.bottom;
   // News only exposes a pull handle while collapsed. Its bottom reserve should
   // be compact so the static slide does not lose an additional full gutter.
@@ -437,7 +438,9 @@ export function NewsScreen() {
       <View pointerEvents="box-none" style={styles.newContentOverlay}>
         {pendingFresh.length > 0 ? (
           <Pressable
-            accessibilityLabel={t('news.showNew', { count: pendingFresh.length })}
+            accessibilityLabel={t('news.showNew', {
+              count: pendingFresh.length,
+            })}
             accessibilityRole="button"
             onPress={applyFreshNews}
             style={[

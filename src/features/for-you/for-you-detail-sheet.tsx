@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { hapticSelection } from '@/core/haptics/feedback';
 import {
@@ -31,6 +31,7 @@ import {
 import { useAuth } from '@/features/auth/auth-provider';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { ReportSheet } from '@/features/moderation/report-sheet';
+import { useTranscriptQuery } from './use-transcript-query';
 import {
   DraggableBottomSheet,
   type DraggableBottomSheetHandle,
@@ -131,11 +132,10 @@ export const ForYouDetailSheet = forwardRef<
           !hiddenCommentIds.has(comment.id) &&
           !(comment.author_id && blockedAuthorIds.has(comment.author_id)),
       ) ?? [];
-  const transcriptQuery = useQuery({
-    queryKey: ['transcript', item.transcript_id],
-    queryFn: () => clients.cms.getTranscript(item.transcript_id!),
-    enabled: tab === 'transcript' && Boolean(item.transcript_id),
-  });
+  const transcriptQuery = useTranscriptQuery(
+    item.transcript_id,
+    tab === 'transcript',
+  );
 
   return (
     <>

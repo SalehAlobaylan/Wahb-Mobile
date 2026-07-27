@@ -28,6 +28,28 @@ describe('CMS history contract', () => {
   });
 });
 
+describe('CMS transcription contract', () => {
+  it('requests a transcript through the authenticated content endpoint', async () => {
+    let captured: RequestOptions | undefined;
+    const transport: Transport = {
+      request: async <T>(options: RequestOptions, schema: ZodType<T>) => {
+        captured = options;
+        return schema.parse({ code: 202, data: { status: 'processing' } });
+      },
+    };
+
+    await expect(
+      createCmsApi(transport).requestTranscription('content-1'),
+    ).resolves.toEqual({ status: 'processing' });
+
+    expect(captured).toMatchObject({
+      path: '/api/v1/content/content-1/transcribe',
+      method: 'POST',
+      authenticated: true,
+    });
+  });
+});
+
 describe('CMS Saved contract', () => {
   it('keeps anonymous Saved reads device-scoped and forwards search', async () => {
     let captured: RequestOptions | undefined;

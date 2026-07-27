@@ -1,7 +1,8 @@
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView } from 'expo-video';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import {
   Bookmark,
   FileText,
@@ -30,6 +31,7 @@ import {
   type NativeSyntheticEvent,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -37,7 +39,10 @@ import {
 import { useSQLiteContext } from 'expo-sqlite';
 import Storage from 'expo-sqlite/kv-store';
 import { useTranslation } from 'react-i18next';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   captureDiagnostic,
@@ -80,8 +85,9 @@ import type { ForYouIntent } from './for-you-intents';
 import {
   activeTranscriptCueIndex,
   formatTranscriptTime,
-  transcriptCues,
+  normalizeTranscript,
 } from './for-you-transcript-model';
+import { useTranscriptQuery } from './use-transcript-query';
 
 import {
   colors,
@@ -93,7 +99,7 @@ import {
   typeScale,
 } from '@/design/tokens';
 import { ForYouFeedChrome } from '@/components/navigation/feed-chrome';
-import { useWahbTypography } from '@/design/typography';
+import { fontForText, useWahbTypography } from '@/design/typography';
 
 function formatDuration(durationSeconds: number): string {
   const minutes = Math.floor(durationSeconds / 60);
@@ -103,6 +109,7 @@ function formatDuration(durationSeconds: number): string {
 
 export function ForYouSliceScreen() {
   const { t } = useTranslation();
+  const router = useRouter();
   const db = useSQLiteContext();
   const [duration, setDuration] = useState<ForYouDurationPreference>();
   const {
@@ -156,12 +163,14 @@ export function ForYouSliceScreen() {
   const feedListRef =
     useRef<FlatList<FrozenForYouSession['items'][number]>>(null);
   const lastPagerSessionId = useRef<string | null>(null);
+  const settledPagerPosition = useRef<number | null>(null);
   const upNextPageFetch = useRef<string | null>(null);
   const diagnosedSessionId = useRef<string | null>(null);
   const feedScreenStartedAt = useRef<number | null>(null);
   const pagerHasInteracted = useRef(false);
   const playbackPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pageHeight, setPageHeight] = useState(0);
+  const [isTranscriptDragging, setIsTranscriptDragging] = useState(false);
   const [swipeCardsPerSecond, setSwipeCardsPerSecond] = useState(0);
   const scrollVelocity = useRef({ offsetY: 0, timestamp: 0, reportedAt: 0 });
   const [playbackPulse, setPlaybackPulse] = useState<'play' | 'pause' | null>(
@@ -254,11 +263,18 @@ export function ForYouSliceScreen() {
           Math.max(0, playbackPositionSeconds / playbackDurationSeconds),
         )
       : 0;
-  const transcriptQuery = useQuery({
-    queryKey: ['for-you-transcript-display', item?.transcript_id],
-    queryFn: () => clients.cms.getTranscript(item!.transcript_id!),
-    enabled: displayMode === 'transcript' && Boolean(item?.transcript_id),
+  const transcriptQuery = useTranscriptQuery(
+    item?.transcript_id,
+    displayMode === 'transcript',
+  );
+  const requestTranscription = useMutation({
+    mutationFn: (contentId: string) =>
+      clients.cms.requestTranscription(contentId),
   });
+
+  useEffect(() => {
+    requestTranscription.reset();
+  }, [item?.id]); // A generation response only belongs to its original item.
 
   useEffect(() => {
     void Storage.getItem('foryou-display-mode-v1').then((value) => {
@@ -915,10 +931,20 @@ export function ForYouSliceScreen() {
     if (!session || pageHeight <= 0) {
       return;
     }
+    if (lastPagerSessionId.current !== session.id) {
+      settledPagerPosition.current = null;
+    }
+    // A swipe has already physically settled at this item. Reissuing an
+    // animated scroll here makes iOS visibly pull the page back before it
+    // accepts the next gesture.
+    if (settledPagerPosition.current === position) {
+      return;
+    }
     const animated = lastPagerSessionId.current === session.id;
     lastPagerSessionId.current = session.id;
     const timer = setTimeout(() => {
       feedListRef.current?.scrollToIndex({ index: position, animated });
+      settledPagerPosition.current = position;
     }, 0);
     return () => clearTimeout(timer);
   }, [pageHeight, position, session]);
@@ -950,6 +976,7 @@ export function ForYouSliceScreen() {
       <FlatList
         data={session.items}
         decelerationRate="fast"
+        disableIntervalMomentum
         getItemLayout={
           pageHeight > 0
             ? (_, index) => ({
@@ -975,6 +1002,7 @@ export function ForYouSliceScreen() {
               Math.round(event.nativeEvent.contentOffset.y / pageHeight),
             ),
           );
+          settledPagerPosition.current = nextPosition;
           if (nextPosition !== position) {
             void selectPosition(nextPosition, {
               autoplay: playback.phase === 'playing',
@@ -1002,6 +1030,9 @@ export function ForYouSliceScreen() {
         onScroll={observePagerVelocity}
         scrollEventThrottle={100}
         pagingEnabled
+        snapToAlignment="start"
+        snapToInterval={pageHeight || undefined}
+        scrollEnabled={!isTranscriptDragging}
         ref={feedListRef}
         refreshControl={
           position === 0 ? (
@@ -1023,35 +1054,25 @@ export function ForYouSliceScreen() {
             testID={index === position ? 'for-you-playback-toggle' : undefined}
             style={[styles.page, { height: pageHeight }]}
           >
-            {index === position && displayMode === 'transcript' ? (
-              <>
-                {page.item.thumbnail_url ? (
-                  <Image
-                    contentFit="cover"
-                    source={page.item.thumbnail_url}
-                    style={styles.transcriptBackgroundImage}
-                  />
-                ) : null}
-                <LinearGradient
-                  colors={[
-                    'rgba(10,10,10,0.58)',
-                    'rgba(10,10,10,0.78)',
-                    'rgba(10,10,10,0.94)',
-                  ]}
-                  style={styles.transcriptBackdrop}
-                />
-              </>
-            ) : index === position && isVideoVisible ? (
+            {index === position && isVideoVisible ? (
               <VideoView
                 player={playback.videoPlayer}
-                style={StyleSheet.absoluteFill}
+                style={[
+                  StyleSheet.absoluteFill,
+                  displayMode === 'transcript' && styles.transcriptVideo,
+                ]}
                 contentFit={displayMode === 'fit' ? 'contain' : 'cover'}
                 nativeControls={false}
               />
             ) : page.item.thumbnail_url ? (
               <Image
                 source={page.item.thumbnail_url}
-                style={StyleSheet.absoluteFill}
+                style={[
+                  StyleSheet.absoluteFill,
+                  index === position &&
+                    displayMode === 'transcript' &&
+                    styles.transcriptBackgroundImage,
+                ]}
                 contentFit="cover"
               />
             ) : (
@@ -1081,7 +1102,20 @@ export function ForYouSliceScreen() {
         windowSize={3}
       />
       <View pointerEvents="box-none" style={styles.card}>
-        <View pointerEvents="none" style={styles.overlay} />
+        {displayMode === 'transcript' ? (
+          <LinearGradient
+            colors={[
+              'rgba(98, 12, 22, 0.48)',
+              'rgba(10, 10, 10, 0.76)',
+              'rgba(6, 6, 6, 0.96)',
+            ]}
+            locations={[0, 0.48, 1]}
+            pointerEvents="none"
+            style={styles.transcriptBackdrop}
+          />
+        ) : (
+          <View pointerEvents="none" style={styles.overlay} />
+        )}
         <View style={styles.displayRail}>
           <Pressable
             accessibilityLabel={t('foryou.fit')}
@@ -1112,6 +1146,7 @@ export function ForYouSliceScreen() {
             accessibilityRole="button"
             accessibilityState={{ selected: displayMode === 'transcript' }}
             onPress={() => selectDisplayMode('transcript')}
+            testID="for-you-display-transcript"
             style={({ pressed }) => [
               styles.railButton,
               displayMode === 'transcript' && styles.railButtonActive,
@@ -1154,154 +1189,180 @@ export function ForYouSliceScreen() {
         ) : null}
         {displayMode === 'transcript' ? (
           <ForYouTranscriptMode
+            canRequestTranscription={Boolean(subject)}
+            generationRequested={requestTranscription.isSuccess}
             hasTranscript={Boolean(item.transcript_id)}
             isError={transcriptQuery.isError}
             isLoading={transcriptQuery.isLoading}
+            isPaused={isCurrent && playback.phase !== 'playing'}
+            itemId={item.id}
+            isRequesting={requestTranscription.isPending}
+            onRequestGeneration={() => {
+              if (!subject) {
+                router.push('/sign-in');
+                return;
+              }
+              requestTranscription.mutate(item.id);
+            }}
+            onRetry={() => void transcriptQuery.refetch()}
+            onTranscriptDragChange={setIsTranscriptDragging}
             positionSeconds={playbackPositionSeconds}
             sourceName={item.source_name}
             text={transcriptQuery.data?.full_text}
-            timestamps={transcriptQuery.data?.word_timestamps}
+            title={item.title}
+            timestamps={{
+              segments: transcriptQuery.data?.segments,
+              words: transcriptQuery.data?.word_timestamps,
+            }}
           />
         ) : null}
 
-        <View style={styles.footer}>
-          <View style={styles.metaRow}>
-            <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
-            <Text style={[styles.metaText, { fontFamily: font('bold') }]}>
-              {item.type}
-            </Text>
-            <Text style={[styles.metaText, { fontFamily: font('mono') }]}>
-              {formatDuration(item.duration_sec)}
-            </Text>
-          </View>
-          <Text
-            style={[styles.title, { fontFamily: font('editorial') }]}
-            numberOfLines={3}
-          >
-            {item.title}
-          </Text>
-          {!!item.source_name && (
-            <Text style={[styles.source, { fontFamily: font('medium') }]}>
-              {item.source_name}
-            </Text>
-          )}
-
-          <View
-            accessible
-            accessibilityLabel={t('foryou.playbackProgress')}
-            accessibilityRole="progressbar"
-            accessibilityValue={{
-              max: Math.round(playbackDurationSeconds),
-              min: 0,
-              now: Math.round(playbackPositionSeconds),
-            }}
-            style={styles.progressTrack}
-          >
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${playbackProgress * 100}%` },
-              ]}
-            />
-          </View>
-
-          {requiresConnection ? (
-            <View
-              accessibilityLiveRegion="polite"
-              style={styles.playbackFailure}
-            >
-              <Text style={styles.errorText}>{t('foryou.connectToPlay')}</Text>
+        {displayMode !== 'transcript' ? (
+          <View style={styles.footer}>
+            <View style={styles.metaRow}>
+              <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
+              <Text style={[styles.metaText, { fontFamily: font('bold') }]}>
+                {item.type}
+              </Text>
+              <Text style={[styles.metaText, { fontFamily: font('mono') }]}>
+                {formatDuration(item.duration_sec)}
+              </Text>
             </View>
-          ) : playback.error && isCurrent ? (
-            <View style={styles.playbackFailure}>
-              <Text style={styles.errorText}>{t('foryou.playbackError')}</Text>
+            <Text
+              style={[styles.title, { fontFamily: font('editorial') }]}
+              numberOfLines={3}
+            >
+              {item.title}
+            </Text>
+            {!!item.source_name && (
+              <Text style={[styles.source, { fontFamily: font('medium') }]}>
+                {item.source_name}
+              </Text>
+            )}
+
+            <View
+              accessible
+              accessibilityLabel={t('foryou.playbackProgress')}
+              accessibilityRole="progressbar"
+              accessibilityValue={{
+                max: Math.round(playbackDurationSeconds),
+                min: 0,
+                now: Math.round(playbackPositionSeconds),
+              }}
+              style={styles.progressTrack}
+            >
+              <View
+                style={[
+                  styles.progressFill,
+                  { width: `${playbackProgress * 100}%` },
+                ]}
+              />
+            </View>
+
+            {requiresConnection ? (
+              <View
+                accessibilityLiveRegion="polite"
+                style={styles.playbackFailure}
+              >
+                <Text style={styles.errorText}>
+                  {t('foryou.connectToPlay')}
+                </Text>
+              </View>
+            ) : playback.error && isCurrent ? (
+              <View style={styles.playbackFailure}>
+                <Text style={styles.errorText}>
+                  {t('foryou.playbackError')}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('foryou.retry')}
+                  onPress={() => void togglePlayback()}
+                  style={({ pressed }) => [
+                    styles.playbackRetry,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <RotateCcw color={colors.inkInverse} size={14} />
+                  <Text style={styles.playbackRetryText}>
+                    {t('foryou.retry')}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {showUpNext ? (
+              <Text style={styles.upNextText}>
+                {t('foryou.upNext', { seconds: playback.upNextSeconds })}
+              </Text>
+            ) : null}
+
+            <View style={[styles.actionRail, styles.hiddenActionRail]}>
               <Pressable
+                accessibilityLabel={
+                  liked ? t('foryou.unlike') : t('foryou.like')
+                }
                 accessibilityRole="button"
-                accessibilityLabel={t('foryou.retry')}
-                onPress={() => void togglePlayback()}
+                accessibilityState={{ selected: liked }}
+                onPress={() => void toggleEngagement('like')}
                 style={({ pressed }) => [
-                  styles.playbackRetry,
+                  styles.actionButton,
+                  liked && styles.actionButtonActive,
                   pressed && styles.pressed,
                 ]}
               >
-                <RotateCcw color={colors.inkInverse} size={14} />
-                <Text style={styles.playbackRetryText}>
-                  {t('foryou.retry')}
+                <Heart
+                  color={colors.inkInverse}
+                  fill={liked ? colors.inkInverse : 'transparent'}
+                  size={22}
+                />
+                <Text style={styles.actionCount}>
+                  {item.like_count + Number(liked) - Number(item.is_liked)}
                 </Text>
               </Pressable>
+              <Pressable
+                accessibilityLabel={
+                  bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+                }
+                accessibilityRole="button"
+                accessibilityState={{ selected: bookmarked }}
+                onPress={() => void toggleEngagement('bookmark')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  bookmarked && styles.actionButtonActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Bookmark
+                  color={colors.inkInverse}
+                  fill={bookmarked ? colors.inkInverse : 'transparent'}
+                  size={22}
+                />
+              </Pressable>
+              <Pressable
+                accessibilityLabel={t('foryou.comments')}
+                accessibilityRole="button"
+                onPress={() => dispatchIntent('open-comments')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MessageCircle color={colors.inkInverse} size={22} />
+                <Text style={styles.actionCount}>{item.comment_count}</Text>
+              </Pressable>
+              <Pressable
+                accessibilityLabel={t('foryou.moreActions')}
+                accessibilityRole="button"
+                onPress={() => dispatchIntent('open-overflow')}
+                style={({ pressed }) => [
+                  styles.actionButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MoreHorizontal color={colors.inkInverse} size={22} />
+              </Pressable>
             </View>
-          ) : null}
-          {showUpNext ? (
-            <Text style={styles.upNextText}>
-              {t('foryou.upNext', { seconds: playback.upNextSeconds })}
-            </Text>
-          ) : null}
-
-          <View style={[styles.actionRail, styles.hiddenActionRail]}>
-            <Pressable
-              accessibilityLabel={liked ? t('foryou.unlike') : t('foryou.like')}
-              accessibilityRole="button"
-              accessibilityState={{ selected: liked }}
-              onPress={() => void toggleEngagement('like')}
-              style={({ pressed }) => [
-                styles.actionButton,
-                liked && styles.actionButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Heart
-                color={colors.inkInverse}
-                fill={liked ? colors.inkInverse : 'transparent'}
-                size={22}
-              />
-              <Text style={styles.actionCount}>
-                {item.like_count + Number(liked) - Number(item.is_liked)}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={
-                bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
-              }
-              accessibilityRole="button"
-              accessibilityState={{ selected: bookmarked }}
-              onPress={() => void toggleEngagement('bookmark')}
-              style={({ pressed }) => [
-                styles.actionButton,
-                bookmarked && styles.actionButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Bookmark
-                color={colors.inkInverse}
-                fill={bookmarked ? colors.inkInverse : 'transparent'}
-                size={22}
-              />
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.comments')}
-              accessibilityRole="button"
-              onPress={() => dispatchIntent('open-comments')}
-              style={({ pressed }) => [
-                styles.actionButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <MessageCircle color={colors.inkInverse} size={22} />
-              <Text style={styles.actionCount}>{item.comment_count}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityLabel={t('foryou.moreActions')}
-              accessibilityRole="button"
-              onPress={() => dispatchIntent('open-overflow')}
-              style={({ pressed }) => [
-                styles.actionButton,
-                pressed && styles.pressed,
-              ]}
-            >
-              <MoreHorizontal color={colors.inkInverse} size={22} />
-            </Pressable>
           </View>
-        </View>
+        ) : null}
       </View>
       {installationId ? (
         <ForYouDetailSheet
@@ -1382,37 +1443,120 @@ export function ForYouSliceScreen() {
 }
 
 function ForYouTranscriptMode({
+  canRequestTranscription,
+  generationRequested,
   hasTranscript,
   isError,
   isLoading,
+  isPaused,
+  isRequesting,
+  itemId,
+  onRequestGeneration,
+  onRetry,
+  onTranscriptDragChange,
   positionSeconds,
   sourceName,
   text,
+  title,
   timestamps,
 }: {
+  canRequestTranscription: boolean;
+  generationRequested: boolean;
   hasTranscript: boolean;
   isError: boolean;
   isLoading: boolean;
+  isPaused: boolean;
+  isRequesting: boolean;
+  itemId: string;
+  onRequestGeneration: () => void;
+  onRetry: () => void;
+  onTranscriptDragChange: (dragging: boolean) => void;
   positionSeconds: number;
   sourceName?: string;
   text?: string;
+  title: string;
   timestamps: unknown;
 }) {
   const { t } = useTranslation();
   const { font } = useWahbTypography();
-  const cues = transcriptCues(text, timestamps);
-  const activeIndex = activeTranscriptCueIndex(cues, positionSeconds);
-  const visibleCues = cues
-    .map((cue, index) => ({ cue, index }))
-    .filter(({ index }) => Math.abs(index - activeIndex) <= 1);
-  const activeCue = cues[activeIndex];
+  const contentTextStyle = (value: string) => ({
+    textAlign: /[\u0600-\u06FF\u0750-\u077F]/u.test(value)
+      ? ('right' as const)
+      : ('left' as const),
+    writingDirection: /[\u0600-\u06FF\u0750-\u077F]/u.test(value)
+      ? ('rtl' as const)
+      : ('ltr' as const),
+  });
+  const insets = useSafeAreaInsets();
+  const presentation = useMemo(
+    () => normalizeTranscript(text, timestamps),
+    [text, timestamps],
+  );
+  const activeIndex = activeTranscriptCueIndex(
+    presentation.cues,
+    positionSeconds,
+  );
+  const scrollRef = useRef<ScrollView>(null);
+  const rowLayouts = useRef(new Map<number, { height: number; y: number }>());
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [layoutRevision, setLayoutRevision] = useState(0);
+  const [followLive, setFollowLive] = useState(true);
+  const previousActiveIndex = useRef<number | null>(null);
+
+  useEffect(() => {
+    rowLayouts.current.clear();
+    previousActiveIndex.current = null;
+    setFollowLive(true);
+    onTranscriptDragChange(false);
+  }, [itemId, onTranscriptDragChange]);
+
+  useEffect(() => {
+    if (
+      presentation.mode !== 'timed' ||
+      !followLive ||
+      previousActiveIndex.current === activeIndex
+    )
+      return;
+    const layout = rowLayouts.current.get(activeIndex);
+    if (!layout || viewportHeight <= 0) return;
+    previousActiveIndex.current = activeIndex;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({
+        animated: true,
+        y: Math.max(0, layout.y + layout.height / 2 - viewportHeight / 2),
+      });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [
+    activeIndex,
+    followLive,
+    layoutRevision,
+    presentation.mode,
+    viewportHeight,
+  ]);
+
+  const manualScrollStart = () => {
+    setFollowLive(false);
+    onTranscriptDragChange(true);
+  };
+  const manualScrollEnd = () => onTranscriptDragChange(false);
 
   return (
-    <View pointerEvents="none" style={styles.transcriptSurface}>
-      <View style={styles.transcriptHalo} />
+    <View
+      style={[
+        styles.transcriptSurface,
+        {
+          bottom: insets.bottom + 78,
+          left: layoutMetrics.pageGutter,
+          right: 72,
+          top: insets.top + 122,
+        },
+      ]}
+      testID="for-you-transcript-surface"
+    >
       <View style={styles.transcriptEyebrowRow}>
         <Text style={[styles.transcriptEyebrow, { fontFamily: font('bold') }]}>
-          {t('foryou.transcript')}
+          {t('foryou.liveTranscript')}
         </Text>
         {!!sourceName && (
           <Text
@@ -1423,44 +1567,172 @@ function ForYouTranscriptMode({
           </Text>
         )}
       </View>
-      <View style={styles.transcriptCueStack}>
+      <Text
+        numberOfLines={2}
+        style={[
+          styles.transcriptTitle,
+          contentTextStyle(title),
+          { fontFamily: fontForText(title, 'bold') },
+        ]}
+      >
+        {title}
+      </Text>
+      {isPaused ? (
+        <View style={styles.transcriptPaused}>
+          <Pause color={colors.inkInverse} size={12} />
+          <Text
+            style={[
+              styles.transcriptPausedText,
+              { fontFamily: font('medium') },
+            ]}
+          >
+            {t('foryou.transcriptPaused')}
+          </Text>
+        </View>
+      ) : null}
+      <View style={styles.transcriptReadingArea}>
         {isLoading ? <ActivityIndicator color={colors.pressRed} /> : null}
-        {!isLoading && !hasTranscript ? (
-          <Text
-            style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
-          >
-            {t('foryou.noTranscript')}
-          </Text>
-        ) : null}
-        {!isLoading && isError ? (
-          <Text
-            style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
-          >
-            {t('foryou.transcriptUnavailable')}
-          </Text>
-        ) : null}
-        {!isLoading && !isError && visibleCues.length
-          ? visibleCues.map(({ cue, index }) => {
-              const active = index === activeIndex;
-              return (
+        {!isLoading &&
+        (isError || !hasTranscript || presentation.mode === 'unavailable') ? (
+          <View style={styles.transcriptState}>
+            <Text
+              style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
+            >
+              {isError
+                ? t('foryou.transcriptUnavailable')
+                : generationRequested
+                  ? t('foryou.transcriptRequested')
+                  : t('foryou.noTranscript')}
+            </Text>
+            {!isError && !generationRequested ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={isRequesting}
+                onPress={onRequestGeneration}
+                style={styles.transcriptAction}
+              >
                 <Text
-                  key={`${cue.startSeconds ?? 'text'}-${index}`}
-                  numberOfLines={active ? 3 : 2}
                   style={[
-                    active ? styles.transcriptCueActive : styles.transcriptCue,
-                    { fontFamily: font(active ? 'bold' : 'body') },
+                    styles.transcriptActionText,
+                    { fontFamily: font('bold') },
                   ]}
                 >
-                  {cue.text}
+                  {isRequesting
+                    ? t('foryou.transcriptRequesting')
+                    : canRequestTranscription
+                      ? t('foryou.requestTranscript')
+                      : t('account.signIn')}
                 </Text>
-              );
-            })
-          : null}
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+        {!isLoading && isError ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onRetry}
+            style={styles.transcriptRetry}
+          >
+            <Text
+              style={[styles.transcriptRetryText, { fontFamily: font('bold') }]}
+            >
+              {t('foryou.retry')}
+            </Text>
+          </Pressable>
+        ) : null}
+        {!isLoading && !isError && presentation.mode === 'reader' ? (
+          <ScrollView
+            nestedScrollEnabled
+            onMomentumScrollEnd={manualScrollEnd}
+            onScrollBeginDrag={manualScrollStart}
+            onScrollEndDrag={manualScrollEnd}
+            showsVerticalScrollIndicator={false}
+            style={styles.transcriptScroll}
+          >
+            <Text
+              style={[
+                styles.transcriptReaderText,
+                contentTextStyle(presentation.text),
+                { fontFamily: fontForText(presentation.text, 'body') },
+              ]}
+            >
+              {presentation.text}
+            </Text>
+          </ScrollView>
+        ) : null}
+        {!isLoading && !isError && presentation.mode === 'timed' ? (
+          <ScrollView
+            nestedScrollEnabled
+            onLayout={(event) =>
+              setViewportHeight(event.nativeEvent.layout.height)
+            }
+            onMomentumScrollEnd={manualScrollEnd}
+            onScrollBeginDrag={manualScrollStart}
+            onScrollEndDrag={manualScrollEnd}
+            ref={scrollRef}
+            showsVerticalScrollIndicator={false}
+            style={styles.transcriptScroll}
+            testID="for-you-transcript-list"
+          >
+            <View style={styles.transcriptCueStack}>
+              {presentation.cues.map((cue, index) => {
+                const active = index === activeIndex;
+                return (
+                  <View
+                    key={cue.id}
+                    onLayout={(event) => {
+                      rowLayouts.current.set(index, event.nativeEvent.layout);
+                      setLayoutRevision((revision) => revision + 1);
+                    }}
+                    style={styles.transcriptCueRow}
+                  >
+                    <Text
+                      style={[
+                        active
+                          ? styles.transcriptCueActive
+                          : styles.transcriptCue,
+                        contentTextStyle(cue.text),
+                        {
+                          fontFamily: fontForText(
+                            cue.text,
+                            active ? 'bold' : 'body',
+                          ),
+                        },
+                      ]}
+                    >
+                      {cue.text}
+                    </Text>
+                    {active && formatTranscriptTime(cue.startSeconds) ? (
+                      <Text
+                        style={[
+                          styles.transcriptTimecode,
+                          { fontFamily: font('mono') },
+                        ]}
+                      >
+                        {formatTranscriptTime(cue.startSeconds)}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+        ) : null}
       </View>
-      {formatTranscriptTime(activeCue?.startSeconds) ? (
-        <Text style={[styles.transcriptTimecode, { fontFamily: font('mono') }]}>
-          {formatTranscriptTime(activeCue?.startSeconds)}
-        </Text>
+      {!followLive ? (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            setFollowLive(true);
+            onTranscriptDragChange(false);
+          }}
+          style={styles.returnToLive}
+          testID="for-you-transcript-return-live"
+        >
+          <Text style={[styles.returnToLiveText, { fontFamily: font('bold') }]}>
+            {t('foryou.returnToLive')}
+          </Text>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -1664,6 +1936,7 @@ const styles = StyleSheet.create({
     opacity: 0.52,
     transform: [{ scale: 1.06 }],
   },
+  transcriptVideo: { opacity: 0.24 },
   overlay: {
     backgroundColor: 'rgba(0,0,0,0.42)',
     bottom: 0,
@@ -1673,18 +1946,16 @@ const styles = StyleSheet.create({
     top: 0,
   },
   transcriptSurface: {
-    alignItems: 'center',
-    bottom: '31%',
-    justifyContent: 'center',
-    left: layoutMetrics.pageGutter,
+    alignItems: 'stretch',
+    backgroundColor: 'rgba(8,8,8,0.22)',
+    borderColor: 'rgba(248,245,242,0.18)',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    justifyContent: 'flex-start',
     overflow: 'hidden',
     position: 'absolute',
-    // Keep the display rail visible and keep transcript rhythm independent of
-    // any particular iPhone height.
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.lg,
-    right: 72,
-    top: '25%',
   },
   transcriptHalo: {
     backgroundColor: 'rgba(230,57,70,0.24)',
@@ -1720,24 +1991,45 @@ const styles = StyleSheet.create({
     ...typeScale.meta,
   },
   transcriptCueStack: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     alignSelf: 'stretch',
-    gap: spacing.sm,
-    justifyContent: 'center',
+    gap: spacing.lg,
+    paddingVertical: spacing.lg,
   },
+  transcriptCueRow: { minHeight: 64 },
+  transcriptReadingArea: { flex: 1, marginTop: spacing.md },
+  transcriptScroll: { flex: 1 },
+  transcriptTitle: {
+    color: colors.inkInverse,
+    fontSize: 20,
+    lineHeight: 28,
+    textAlign: 'left',
+  },
+  transcriptPaused: {
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderColor: 'rgba(248,245,242,0.25)',
+    borderRadius: radii.round,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 5,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+  transcriptPausedText: { color: colors.inkInverse, ...typeScale.micro },
   transcriptCue: {
     color: 'rgba(248,245,242,0.46)',
-    fontFamily: fontFamilies.body,
-    ...typeScale.body,
-    lineHeight: 22,
-    textAlign: 'center',
+    fontSize: 17,
+    lineHeight: 27,
+    textAlign: 'left',
   },
   transcriptCueActive: {
     color: colors.inkInverse,
-    fontFamily: fontFamilies.bodyBold,
     fontSize: 21,
-    lineHeight: 30,
-    textAlign: 'center',
+    lineHeight: 32,
+    textAlign: 'left',
   },
   transcriptEmpty: {
     color: colors.inkInverse,
@@ -1745,6 +2037,46 @@ const styles = StyleSheet.create({
     ...typeScale.bodyLarge,
     textAlign: 'center',
   },
+  transcriptState: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  transcriptAction: {
+    backgroundColor: colors.pressRed,
+    borderRadius: radii.round,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  transcriptActionText: { color: colors.inkInverse, ...typeScale.label },
+  transcriptRetry: {
+    alignSelf: 'center',
+    borderColor: colors.inkInverse,
+    borderRadius: radii.round,
+    borderWidth: 1,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  transcriptRetryText: { color: colors.inkInverse, ...typeScale.label },
+  transcriptReaderText: {
+    color: colors.inkInverse,
+    fontSize: 18,
+    lineHeight: 31,
+    paddingBottom: spacing.xl,
+    textAlign: 'left',
+  },
+  returnToLive: {
+    alignSelf: 'center',
+    backgroundColor: colors.pressRed,
+    borderRadius: radii.round,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  returnToLiveText: { color: colors.inkInverse, ...typeScale.label },
   transcriptTimecode: {
     borderColor: colors.pressRed,
     borderRadius: radii.round,
