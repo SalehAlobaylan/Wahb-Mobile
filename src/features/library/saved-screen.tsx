@@ -37,17 +37,17 @@ import { usePlaybackController } from '@/features/playback/playback-provider';
 
 import { formatSavedDuration, formatSavedRelativeTime } from './saved-model';
 
-type SavedFeed = 'foryou' | 'news';
+type SavedFeed = 'pods' | 'news';
 type Sort = 'saved_desc' | 'saved_asc';
 
-const savedFeeds: readonly SavedFeed[] = ['foryou', 'news'];
+const savedFeeds: readonly SavedFeed[] = ['pods', 'news'];
 
 function itemTitle(item: SavedContentItem, fallback: string) {
   return item.title?.trim() || fallback;
 }
 
 function feedLabel(feed: SavedFeed, t: (key: string) => string) {
-  return t(feed === 'foryou' ? 'library.forYou' : 'library.news');
+  return t(feed === 'pods' ? 'library.pods' : 'library.news');
 }
 
 export function SavedScreen() {
@@ -70,7 +70,7 @@ export function SavedScreen() {
     : installationId
       ? `anonymous:${installationId}`
       : null;
-  const [activeFeed, setActiveFeed] = useState<SavedFeed>('foryou');
+  const [activeFeed, setActiveFeed] = useState<SavedFeed>('pods');
   const [sort, setSort] = useState<Sort>('saved_desc');
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -82,15 +82,15 @@ export function SavedScreen() {
 
   // Both queries stay mounted for the Platform's visible per-feed counts and
   // to preserve each list when the user changes tabs.
-  const forYouQuery = useInfiniteQuery({
-    queryKey: ['saved-content', identityScope, 'foryou', sort, search],
+  const podsQuery = useInfiniteQuery({
+    queryKey: ['saved-content', identityScope, 'pods', sort, search],
     enabled: Boolean(installationId && identityScope),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam, signal }) =>
       clients.cms.getSavedContent({
         ...(pageParam ? { cursor: pageParam } : {}),
         installationId,
-        feed: 'foryou',
+        feed: 'pods',
         sort,
         ...(search ? { q: search } : {}),
         signal,
@@ -112,10 +112,10 @@ export function SavedScreen() {
       }),
     getNextPageParam: (page) => page.cursor,
   });
-  const activeQuery = activeFeed === 'foryou' ? forYouQuery : newsQuery;
+  const activeQuery = activeFeed === 'pods' ? podsQuery : newsQuery;
   const items = activeQuery.data?.pages.flatMap((page) => page.items) ?? [];
   const counts = {
-    foryou: forYouQuery.data?.pages.flatMap((page) => page.items).length ?? 0,
+    pods: podsQuery.data?.pages.flatMap((page) => page.items).length ?? 0,
     news: newsQuery.data?.pages.flatMap((page) => page.items).length ?? 0,
   };
 
@@ -194,7 +194,7 @@ export function SavedScreen() {
   );
 
   const refresh = () =>
-    Promise.all([forYouQuery.refetch(), newsQuery.refetch()]);
+    Promise.all([podsQuery.refetch(), newsQuery.refetch()]);
   const fetchNext = () => {
     if (activeQuery.hasNextPage && !activeQuery.isFetchingNextPage) {
       void activeQuery.fetchNextPage();
@@ -220,7 +220,7 @@ export function SavedScreen() {
         onEndReachedThreshold={0.45}
         refreshControl={
           <RefreshControl
-            refreshing={forYouQuery.isRefetching || newsQuery.isRefetching}
+            refreshing={podsQuery.isRefetching || newsQuery.isRefetching}
             onRefresh={() => void refresh()}
             tintColor={theme.accent}
           />
@@ -627,14 +627,14 @@ function SavedEmpty({
   const title = hasSearch
     ? t('library.emptySearchTitle')
     : t(
-        feed === 'foryou'
-          ? 'library.emptyForYouTitle'
+        feed === 'pods'
+          ? 'library.emptyPodsTitle'
           : 'library.emptyNewsTitle',
       );
   const copy = hasSearch
     ? t('library.emptySearchCopy')
     : t(
-        feed === 'foryou' ? 'library.emptyForYouCopy' : 'library.emptyNewsCopy',
+        feed === 'pods' ? 'library.emptyPodsCopy' : 'library.emptyNewsCopy',
       );
   return (
     <View style={styles.empty}>

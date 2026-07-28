@@ -48,7 +48,7 @@ that session; UI rerenders never reshuffle it. The local `feed_sessions` and
 restart and honest offline restoration.
 
 The server remains responsible for candidate selection, personalization,
-repetition windows, and feed policy. `POST /api/v1/feed/foryou/sessions`
+repetition windows, and feed policy. `POST /api/v1/feed/pods/sessions`
 creates a six-hour frozen, identity-scoped CMS snapshot; the app persists its
 opaque server session ID alongside the SQLite recovery ledger and only appends
 pages from that session. It must not silently mix old inventory into a new
@@ -60,7 +60,7 @@ snapshot. It is available only on the first card, confirms a successful reset
 with a native success haptic and a New Content cue, and leaves the prior frozen
 session and its progress intact on failure.
 
-The For You surface renders that ordered snapshot through a vertically paged
+The Pods surface renders that ordered snapshot through a vertically paged
 native `FlatList`. Only the selected page attaches the shared video player;
 neighbouring pages render their approved artwork or audio fallback. Reaching
 the trailing pages asks the existing session for another cursor-bound page, not
@@ -81,7 +81,7 @@ It performs only abortable `HEAD` metadata probes and cancels the previous
 generation on any constrained state. It never downloads media, creates a second
 Now Playing owner, or promises offline playback.
 
-When a For You item completes, the playback controller—not the feed screen—owns
+When a Pods item completes, the playback controller—not the feed screen—owns
 the cancellable three-second Up Next countdown. The feed may supply only the
 next item already present in the same frozen session and persists the resulting
 position; pausing, replaying, reverse seeking, swiping, refresh, hiding, or
@@ -118,7 +118,7 @@ metadata, and audio-session policy.
 Playback position writes must be throttled and checkpointed at lifecycle
 boundaries rather than written every frame.
 
-For You exposes a native playback progress indicator from the shared player
+Pods exposes a native playback progress indicator from the shared player
 snapshot. A direct tap on the active media surface toggles playback and gives a
 brief visual confirmation without a haptic; the explicit 44-point playback
 button remains the accessible alternative. The speed control cycles only the
@@ -138,14 +138,14 @@ and dismissal; dismissal retains the item, timestamp, and prior play state for
 a five-second Undo. Feed routes remain free of this horizontal bar so M5 can
 provide the distinct News playback tile.
 
-After a true end-of-media signal, For You presents a three-second Up Next
+After a true end-of-media signal, Pods presents a three-second Up Next
 countdown and can replace playback only with the next item in the same frozen
 session. Replay, manual navigation, a failed next source, or the end of that
 session cancels advancement; it never crosses into a newly ranked session.
 
-## For You detail surface
+## Pods detail surface
 
-The production For You surface keeps cinematic content chrome compact: Fit,
+The production Pods surface keeps cinematic content chrome compact: Fit,
 Fill, and Transcript are explicit visual modes. Transcript uses only the
 CMS-approved full-text response and presents a readable on-media excerpt over
 the editorial red halo; it is intentionally not represented as timestamped
@@ -160,7 +160,7 @@ sheet records a share only after the operating system reports it completed.
 
 News consumes a separately runtime-validated story-slide contract: one featured
 story, no more than three related stories, explicit CMS lead/member IDs, and
-coverage provenance. It is intentionally live rather than a six-hour For You
+coverage provenance. It is intentionally live rather than a six-hour Pods
 session. The app checks CMS at most once per 60 seconds and never replaces or
 reorders the slide currently on screen. Unseen coverage stays behind an
 explicit New Updates control; only that intentional action returns the reader
@@ -292,7 +292,7 @@ correlation is a truncated SHA-256 hash of the IAM user ID; raw IDs, emails,
 content, credentials, URLs, transcript/article text, and comments never leave
 the app through diagnostics.
 
-The only lifecycle measurements are bounded app-start and For You first-render
+The only lifecycle measurements are bounded app-start and Pods first-render
 latency, frozen-session recovery, playback start/buffer/fallback duration, and
 outbox health/flush duration. Event names and dimensions are both allow-listed;
 arbitrary error names are reduced to a generic application error. Ranking and
@@ -301,12 +301,12 @@ analytics to a third party.
 
 ## M10 offline and release gates
 
-An expired For You session may be reopened only as a labelled offline snapshot.
+An expired Pods session may be reopened only as a labelled offline snapshot.
 It has no cursor, cannot append or reshuffle, and remote media says **Connect
 to play** rather than presenting player cache as a download. With no readable
 snapshot, cold launch shows a distinct offline screen. A confirmed CMS `404`
 from a durable interaction becomes a local tombstone, so deleted or moderated
-content cannot reappear through a cached For You session; a `404` article also
+content cannot reappear through a cached Pods session; a `404` article also
 removes its local reader snapshot.
 
 `eas.json` defines isolated `development`, `preview`, and `production`

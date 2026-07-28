@@ -106,8 +106,8 @@ export function NewsNowPlayingTile({
         failed
           ? t('nowPlaying.failed')
           : isPlaying
-            ? t('foryou.pause')
-            : t('foryou.play')
+            ? t('pods.pause')
+            : t('pods.play')
       }`}
       accessibilityRole="button"
       delayLongPress={450}
@@ -525,7 +525,7 @@ export function NewsPlaybackSheet({
             </TransportButton>
             <Pressable
               accessibilityLabel={
-                isPlaying ? t('foryou.pause') : t('foryou.play')
+                isPlaying ? t('pods.pause') : t('pods.play')
               }
               accessibilityRole="button"
               disabled={!active || playback.phase === 'loading'}
@@ -563,7 +563,7 @@ export function NewsPlaybackSheet({
               </Text>
             </TransportButton>
             <Pressable
-              accessibilityLabel={t('foryou.changeSpeed', {
+              accessibilityLabel={t('pods.changeSpeed', {
                 rate: playback.rate,
               })}
               accessibilityRole="button"
@@ -606,7 +606,7 @@ export function NewsPlaybackSheet({
               onPress={() => setTab('tts')}
             />
             <Pressable
-              accessibilityLabel={t('foryou.share')}
+              accessibilityLabel={t('pods.share')}
               accessibilityRole="button"
               disabled={!activeStory && !active}
               onPress={() => void share()}
@@ -625,7 +625,7 @@ export function NewsPlaybackSheet({
                   },
                 ]}
               >
-                {t('foryou.share')}
+                {t('pods.share')}
               </Text>
             </Pressable>
           </View>

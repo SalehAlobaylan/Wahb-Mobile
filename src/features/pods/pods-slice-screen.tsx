@@ -55,17 +55,17 @@ import { useOutbox } from '@/core/outbox/outbox-provider';
 import { useConnectivity } from '@/core/network/connectivity-provider';
 import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 import { useAuth } from '@/features/auth/auth-provider';
-import type { FrozenForYouSession } from '@/features/feed-session/for-you-session-repository';
+import type { FrozenPodsSession } from '@/features/feed-session/pods-session-repository';
 import {
-  recordForYouConsumption,
-  recordForYouExposure,
-  recordForYouProgress,
-  updateForYouSessionPosition,
-} from '@/features/feed-session/for-you-session-repository';
+  recordPodsConsumption,
+  recordPodsExposure,
+  recordPodsProgress,
+  updatePodsSessionPosition,
+} from '@/features/feed-session/pods-session-repository';
 import {
-  type ForYouDurationPreference,
-  useForYouSession,
-} from '@/features/feed-session/use-for-you-session';
+  type PodsDurationPreference,
+  usePodsSession,
+} from '@/features/feed-session/use-pods-session';
 import {
   classifyConsumption,
   createConsumptionState,
@@ -77,16 +77,16 @@ import { useMediaPreparation } from '@/features/playback/use-media-preparation';
 import { type PlaybackItem } from '@/features/playback/playback-model';
 
 import {
-  ForYouDetailSheet,
-  type ForYouDetailSheetHandle,
-} from './for-you-detail-sheet';
+  PodsDetailSheet,
+  type PodsDetailSheetHandle,
+} from './pods-detail-sheet';
 import { ReportSheet } from '@/features/moderation/report-sheet';
-import type { ForYouIntent } from './for-you-intents';
+import type { PodsIntent } from './pods-intents';
 import {
   activeTranscriptCueIndex,
   formatTranscriptTime,
   normalizeTranscript,
-} from './for-you-transcript-model';
+} from './pods-transcript-model';
 import { useTranscriptQuery } from './use-transcript-query';
 
 import {
@@ -98,7 +98,7 @@ import {
   spacing,
   typeScale,
 } from '@/design/tokens';
-import { ForYouFeedChrome } from '@/components/navigation/feed-chrome';
+import { PodsFeedChrome } from '@/components/navigation/feed-chrome';
 import { fontForText, useWahbTypography } from '@/design/typography';
 
 function formatDuration(durationSeconds: number): string {
@@ -107,11 +107,11 @@ function formatDuration(durationSeconds: number): string {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-export function ForYouSliceScreen() {
+export function PodsSliceScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const db = useSQLiteContext();
-  const [duration, setDuration] = useState<ForYouDurationPreference>();
+  const [duration, setDuration] = useState<PodsDurationPreference>();
   const {
     identityQuery,
     sessionQuery,
@@ -119,7 +119,7 @@ export function ForYouSliceScreen() {
     hideItem,
     refreshSession,
     checkForFreshness,
-  } = useForYouSession(duration);
+  } = usePodsSession(duration);
   const playback = usePlaybackController();
   const startPlayback = playback.start;
   const autoplayEnabled = playback.autoplayEnabled;
@@ -156,12 +156,12 @@ export function ForYouSliceScreen() {
   const [displayMode, setDisplayMode] = useState<'fit' | 'fill' | 'transcript'>(
     'fit',
   );
-  const detailSheetRef = useRef<ForYouDetailSheetHandle>(null);
+  const detailSheetRef = useRef<PodsDetailSheetHandle>(null);
   const [engagement, setEngagement] = useState<
     Record<string, { liked?: boolean; bookmarked?: boolean }>
   >({});
   const feedListRef =
-    useRef<FlatList<FrozenForYouSession['items'][number]>>(null);
+    useRef<FlatList<FrozenPodsSession['items'][number]>>(null);
   const lastPagerSessionId = useRef<string | null>(null);
   const settledPagerPosition = useRef<number | null>(null);
   const upNextPageFetch = useRef<string | null>(null);
@@ -277,7 +277,7 @@ export function ForYouSliceScreen() {
   }, [item?.id]); // A generation response only belongs to its original item.
 
   useEffect(() => {
-    void Storage.getItem('foryou-display-mode-v1').then((value) => {
+    void Storage.getItem('pods-display-mode-v1').then((value) => {
       if (value === 'fit' || value === 'fill' || value === 'transcript') {
         setDisplayMode(value);
       }
@@ -287,7 +287,7 @@ export function ForYouSliceScreen() {
   const selectDisplayMode = useCallback(
     (next: 'fit' | 'fill' | 'transcript') => {
       setDisplayMode(next);
-      void Storage.setItem('foryou-display-mode-v1', next);
+      void Storage.setItem('pods-display-mode-v1', next);
     },
     [],
   );
@@ -307,11 +307,11 @@ export function ForYouSliceScreen() {
     const duration_ms = elapsedMilliseconds(
       feedScreenStartedAt.current ?? performance.now(),
     );
-    captureDiagnostic('foryou_first_render', {
+    captureDiagnostic('pods_first_render', {
       event_type: eventType,
       duration_ms,
     });
-    captureDiagnostic('foryou_session_health', {
+    captureDiagnostic('pods_session_health', {
       event_type: eventType,
       duration_ms,
     });
@@ -340,7 +340,7 @@ export function ForYouSliceScreen() {
         return;
       }
       try {
-        const recorded = await recordForYouConsumption(
+        const recorded = await recordPodsConsumption(
           db,
           targetSessionId,
           targetPosition,
@@ -353,7 +353,7 @@ export function ForYouSliceScreen() {
           await outbox.flush();
         }
       } catch (error) {
-        captureException('foryou_consumption_queue_failed', error);
+        captureException('pods_consumption_queue_failed', error);
       }
     },
     [db, outbox],
@@ -365,7 +365,7 @@ export function ForYouSliceScreen() {
       return;
     }
     try {
-      await updateForYouSessionPosition(
+      await updatePodsSessionPosition(
         db,
         current.sessionId,
         current.position,
@@ -397,14 +397,14 @@ export function ForYouSliceScreen() {
     if (!session || !item || !identityScope) {
       return;
     }
-    void recordForYouExposure(db, session.id, position, identityScope)
+    void recordPodsExposure(db, session.id, position, identityScope)
       .then(async (recorded) => {
         if (recorded) {
           await outbox.flush();
         }
       })
       .catch((error: unknown) => {
-        captureException('foryou_exposure_queue_failed', error);
+        captureException('pods_exposure_queue_failed', error);
       });
   }, [db, identityScope, item, outbox, position, session]);
 
@@ -455,7 +455,7 @@ export function ForYouSliceScreen() {
     ) {
       return;
     }
-    void recordForYouProgress(
+    void recordPodsProgress(
       db,
       session.id,
       position,
@@ -470,7 +470,7 @@ export function ForYouSliceScreen() {
         return undefined;
       })
       .catch((error: unknown) =>
-        captureException('foryou_progress_queue_failed', error),
+        captureException('pods_progress_queue_failed', error),
       );
   }, [
     db,
@@ -547,13 +547,13 @@ export function ForYouSliceScreen() {
         setPendingAutoplay(null);
       }
       try {
-        await updateForYouSessionPosition(
+        await updatePodsSessionPosition(
           db,
           session.id,
           position,
           playback.currentTimeSeconds * 1_000,
         );
-        await updateForYouSessionPosition(db, session.id, nextPosition, 0);
+        await updatePodsSessionPosition(db, session.id, nextPosition, 0);
       } catch (error) {
         captureException('feed_session_position_write_failed', error);
       }
@@ -628,7 +628,7 @@ export function ForYouSliceScreen() {
   ]);
 
   const dispatchIntent = useCallback(
-    (intent: ForYouIntent) => {
+    (intent: PodsIntent) => {
       switch (intent) {
         case 'toggle-playback':
           togglePlayback();
@@ -652,7 +652,7 @@ export function ForYouSliceScreen() {
     [position, selectPosition, togglePlayback],
   );
 
-  const refreshForYouSession = useCallback(async () => {
+  const refreshPodsSession = useCallback(async () => {
     playback.cancelUpNext();
     playback.pause();
     setPendingAutoplay(null);
@@ -662,7 +662,7 @@ export function ForYouSliceScreen() {
       setHasNewContent(false);
       hapticSuccess();
     } catch (error) {
-      captureException('foryou_session_refresh_failed', error);
+      captureException('pods_session_refresh_failed', error);
       hapticWarning();
     } finally {
       setIsRefreshing(false);
@@ -675,7 +675,7 @@ export function ForYouSliceScreen() {
     } catch (error) {
       // A freshness check is advisory. Never disturb a readable frozen session
       // if it fails or its six-hour server snapshot has expired.
-      captureException('foryou_freshness_check_failed', error);
+      captureException('pods_freshness_check_failed', error);
     }
   }, [checkForFreshness]);
 
@@ -719,7 +719,7 @@ export function ForYouSliceScreen() {
             ...(kind === 'like' ? { liked: current } : { bookmarked: current }),
           },
         }));
-        captureException('foryou_engagement_queue_failed', error, { kind });
+        captureException('pods_engagement_queue_failed', error, { kind });
         hapticWarning();
       }
     },
@@ -748,7 +748,7 @@ export function ForYouSliceScreen() {
       );
       setIsOverflowVisible(false);
     } catch (error) {
-      captureException('foryou_hide_item_failed', error);
+      captureException('pods_hide_item_failed', error);
       hapticWarning();
     }
   }, [hideItem, isCurrent, item, outbox, playback]);
@@ -762,7 +762,7 @@ export function ForYouSliceScreen() {
       hapticSuccess();
       await hideCurrentItem();
     } catch (error) {
-      captureException('foryou_mute_source_failed', error, {
+      captureException('pods_mute_source_failed', error, {
         contentId: item.id,
       });
       hapticWarning();
@@ -852,13 +852,13 @@ export function ForYouSliceScreen() {
       setSelection({ sessionId: session.id, position: nextPosition });
       setPendingAutoplay(null);
       try {
-        await updateForYouSessionPosition(
+        await updatePodsSessionPosition(
           db,
           session.id,
           position,
           playback.currentTimeSeconds * 1_000,
         );
-        await updateForYouSessionPosition(db, session.id, nextPosition, 0);
+        await updatePodsSessionPosition(db, session.id, nextPosition, 0);
         return true;
       } catch (error) {
         captureException('feed_session_position_write_failed', error);
@@ -950,12 +950,12 @@ export function ForYouSliceScreen() {
   }, [pageHeight, position, session]);
 
   if (identityQuery.isPending || sessionQuery.isPending) {
-    return <ForYouLoading />;
+    return <PodsLoading />;
   }
 
   if (identityQuery.isError || sessionQuery.isError) {
     return (
-      <ForYouFailure
+      <PodsFailure
         offline={sessionQuery.error instanceof NetworkError}
         onRetry={() => void sessionQuery.refetch()}
       />
@@ -964,9 +964,9 @@ export function ForYouSliceScreen() {
 
   if (!session || !item) {
     return (
-      <ForYouEmpty
+      <PodsEmpty
         refreshing={isRefreshing}
-        onRefresh={() => void refreshForYouSession()}
+        onRefresh={() => void refreshPodsSession()}
       />
     );
   }
@@ -1038,9 +1038,9 @@ export function ForYouSliceScreen() {
           position === 0 ? (
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => void refreshForYouSession()}
+              onRefresh={() => void refreshPodsSession()}
               tintColor={colors.inkInverse}
-              title={t('foryou.refreshing')}
+              title={t('pods.refreshing')}
               titleColor={colors.inkInverse}
             />
           ) : undefined
@@ -1051,7 +1051,7 @@ export function ForYouSliceScreen() {
             accessible={false}
             disabled={index !== position}
             onPress={() => dispatchIntent('toggle-playback')}
-            testID={index === position ? 'for-you-playback-toggle' : undefined}
+            testID={index === position ? 'pods-playback-toggle' : undefined}
             style={[styles.page, { height: pageHeight }]}
           >
             {index === position && isVideoVisible ? (
@@ -1118,7 +1118,7 @@ export function ForYouSliceScreen() {
         )}
         <View style={styles.displayRail}>
           <Pressable
-            accessibilityLabel={t('foryou.fit')}
+            accessibilityLabel={t('pods.fit')}
             accessibilityRole="button"
             onPress={() => selectDisplayMode('fit')}
             style={({ pressed }) => [
@@ -1130,7 +1130,7 @@ export function ForYouSliceScreen() {
             <Minimize2 color={colors.inkInverse} size={18} />
           </Pressable>
           <Pressable
-            accessibilityLabel={t('foryou.fill')}
+            accessibilityLabel={t('pods.fill')}
             accessibilityRole="button"
             onPress={() => selectDisplayMode('fill')}
             style={({ pressed }) => [
@@ -1142,11 +1142,11 @@ export function ForYouSliceScreen() {
             <Maximize2 color={colors.inkInverse} size={18} />
           </Pressable>
           <Pressable
-            accessibilityLabel={t('foryou.transcript')}
+            accessibilityLabel={t('pods.transcript')}
             accessibilityRole="button"
             accessibilityState={{ selected: displayMode === 'transcript' }}
             onPress={() => selectDisplayMode('transcript')}
-            testID="for-you-display-transcript"
+            testID="pods-display-transcript"
             style={({ pressed }) => [
               styles.railButton,
               displayMode === 'transcript' && styles.railButtonActive,
@@ -1156,20 +1156,20 @@ export function ForYouSliceScreen() {
             <FileText color={colors.inkInverse} size={18} />
           </Pressable>
         </View>
-        <ForYouFeedChrome duration={duration} onDurationChange={setDuration} />
+        <PodsFeedChrome duration={duration} onDurationChange={setDuration} />
         <View style={styles.feedStatusRow}>
           {hasNewContent ? (
             <Pressable
-              accessibilityLabel={t('foryou.newContent')}
+              accessibilityLabel={t('pods.newContent')}
               accessibilityRole="button"
               disabled={isRefreshing}
-              onPress={() => void refreshForYouSession()}
+              onPress={() => void refreshPodsSession()}
               style={styles.newContentPill}
             >
               <Text
                 style={[styles.newContentLabel, { fontFamily: font('bold') }]}
               >
-                {t('foryou.newContent')}
+                {t('pods.newContent')}
               </Text>
             </Pressable>
           ) : (
@@ -1183,12 +1183,12 @@ export function ForYouSliceScreen() {
           <View accessibilityLiveRegion="polite" style={styles.offlineBanner}>
             <WifiOff color={colors.inkInverse} size={14} />
             <Text style={styles.offlineBannerText}>
-              {t('foryou.offlineSnapshot')}
+              {t('pods.offlineSnapshot')}
             </Text>
           </View>
         ) : null}
         {displayMode === 'transcript' ? (
-          <ForYouTranscriptMode
+          <PodsTranscriptMode
             canRequestTranscription={Boolean(subject)}
             generationRequested={requestTranscription.isSuccess}
             hasTranscript={Boolean(item.transcript_id)}
@@ -1242,7 +1242,7 @@ export function ForYouSliceScreen() {
 
             <View
               accessible
-              accessibilityLabel={t('foryou.playbackProgress')}
+              accessibilityLabel={t('pods.playbackProgress')}
               accessibilityRole="progressbar"
               accessibilityValue={{
                 max: Math.round(playbackDurationSeconds),
@@ -1265,17 +1265,17 @@ export function ForYouSliceScreen() {
                 style={styles.playbackFailure}
               >
                 <Text style={styles.errorText}>
-                  {t('foryou.connectToPlay')}
+                  {t('pods.connectToPlay')}
                 </Text>
               </View>
             ) : playback.error && isCurrent ? (
               <View style={styles.playbackFailure}>
                 <Text style={styles.errorText}>
-                  {t('foryou.playbackError')}
+                  {t('pods.playbackError')}
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={t('foryou.retry')}
+                  accessibilityLabel={t('pods.retry')}
                   onPress={() => void togglePlayback()}
                   style={({ pressed }) => [
                     styles.playbackRetry,
@@ -1284,21 +1284,21 @@ export function ForYouSliceScreen() {
                 >
                   <RotateCcw color={colors.inkInverse} size={14} />
                   <Text style={styles.playbackRetryText}>
-                    {t('foryou.retry')}
+                    {t('pods.retry')}
                   </Text>
                 </Pressable>
               </View>
             ) : null}
             {showUpNext ? (
               <Text style={styles.upNextText}>
-                {t('foryou.upNext', { seconds: playback.upNextSeconds })}
+                {t('pods.upNext', { seconds: playback.upNextSeconds })}
               </Text>
             ) : null}
 
             <View style={[styles.actionRail, styles.hiddenActionRail]}>
               <Pressable
                 accessibilityLabel={
-                  liked ? t('foryou.unlike') : t('foryou.like')
+                  liked ? t('pods.unlike') : t('pods.like')
                 }
                 accessibilityRole="button"
                 accessibilityState={{ selected: liked }}
@@ -1320,7 +1320,7 @@ export function ForYouSliceScreen() {
               </Pressable>
               <Pressable
                 accessibilityLabel={
-                  bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+                  bookmarked ? t('pods.removeBookmark') : t('pods.bookmark')
                 }
                 accessibilityRole="button"
                 accessibilityState={{ selected: bookmarked }}
@@ -1338,7 +1338,7 @@ export function ForYouSliceScreen() {
                 />
               </Pressable>
               <Pressable
-                accessibilityLabel={t('foryou.comments')}
+                accessibilityLabel={t('pods.comments')}
                 accessibilityRole="button"
                 onPress={() => dispatchIntent('open-comments')}
                 style={({ pressed }) => [
@@ -1350,7 +1350,7 @@ export function ForYouSliceScreen() {
                 <Text style={styles.actionCount}>{item.comment_count}</Text>
               </Pressable>
               <Pressable
-                accessibilityLabel={t('foryou.moreActions')}
+                accessibilityLabel={t('pods.moreActions')}
                 accessibilityRole="button"
                 onPress={() => dispatchIntent('open-overflow')}
                 style={({ pressed }) => [
@@ -1365,7 +1365,7 @@ export function ForYouSliceScreen() {
         ) : null}
       </View>
       {installationId ? (
-        <ForYouDetailSheet
+        <PodsDetailSheet
           ref={detailSheetRef}
           installationId={installationId}
           item={item}
@@ -1373,7 +1373,7 @@ export function ForYouSliceScreen() {
             <View style={styles.sheetActionRail}>
               <Pressable
                 accessibilityLabel={
-                  liked ? t('foryou.unlike') : t('foryou.like')
+                  liked ? t('pods.unlike') : t('pods.like')
                 }
                 accessibilityRole="button"
                 onPress={() => void toggleEngagement('like')}
@@ -1389,7 +1389,7 @@ export function ForYouSliceScreen() {
                 </Text>
               </Pressable>
               <Pressable
-                accessibilityLabel={t('foryou.comments')}
+                accessibilityLabel={t('pods.comments')}
                 accessibilityRole="button"
                 onPress={() => detailSheetRef.current?.open('comments')}
                 style={styles.sheetActionButton}
@@ -1399,7 +1399,7 @@ export function ForYouSliceScreen() {
               </Pressable>
               <Pressable
                 accessibilityLabel={
-                  bookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+                  bookmarked ? t('pods.removeBookmark') : t('pods.bookmark')
                 }
                 accessibilityRole="button"
                 onPress={() => void toggleEngagement('bookmark')}
@@ -1412,7 +1412,7 @@ export function ForYouSliceScreen() {
                 />
               </Pressable>
               <Pressable
-                accessibilityLabel={t('foryou.moreActions')}
+                accessibilityLabel={t('pods.moreActions')}
                 accessibilityRole="button"
                 onPress={() => dispatchIntent('open-overflow')}
                 style={styles.sheetActionButton}
@@ -1423,7 +1423,7 @@ export function ForYouSliceScreen() {
           }
         />
       ) : null}
-      <ForYouOverflowSheet
+      <PodsOverflowSheet
         onClose={() => setIsOverflowVisible(false)}
         onMuteSource={subject ? () => void muteCurrentSource() : undefined}
         onReport={() =>
@@ -1442,7 +1442,7 @@ export function ForYouSliceScreen() {
   );
 }
 
-function ForYouTranscriptMode({
+function PodsTranscriptMode({
   canRequestTranscription,
   generationRequested,
   hasTranscript,
@@ -1552,11 +1552,11 @@ function ForYouTranscriptMode({
           top: insets.top + 122,
         },
       ]}
-      testID="for-you-transcript-surface"
+      testID="pods-transcript-surface"
     >
       <View style={styles.transcriptEyebrowRow}>
         <Text style={[styles.transcriptEyebrow, { fontFamily: font('bold') }]}>
-          {t('foryou.liveTranscript')}
+          {t('pods.liveTranscript')}
         </Text>
         {!!sourceName && (
           <Text
@@ -1586,7 +1586,7 @@ function ForYouTranscriptMode({
               { fontFamily: font('medium') },
             ]}
           >
-            {t('foryou.transcriptPaused')}
+            {t('pods.transcriptPaused')}
           </Text>
         </View>
       ) : null}
@@ -1599,10 +1599,10 @@ function ForYouTranscriptMode({
               style={[styles.transcriptEmpty, { fontFamily: font('medium') }]}
             >
               {isError
-                ? t('foryou.transcriptUnavailable')
+                ? t('pods.transcriptUnavailable')
                 : generationRequested
-                  ? t('foryou.transcriptRequested')
-                  : t('foryou.noTranscript')}
+                  ? t('pods.transcriptRequested')
+                  : t('pods.noTranscript')}
             </Text>
             {!isError && !generationRequested ? (
               <Pressable
@@ -1618,9 +1618,9 @@ function ForYouTranscriptMode({
                   ]}
                 >
                   {isRequesting
-                    ? t('foryou.transcriptRequesting')
+                    ? t('pods.transcriptRequesting')
                     : canRequestTranscription
-                      ? t('foryou.requestTranscript')
+                      ? t('pods.requestTranscript')
                       : t('account.signIn')}
                 </Text>
               </Pressable>
@@ -1636,7 +1636,7 @@ function ForYouTranscriptMode({
             <Text
               style={[styles.transcriptRetryText, { fontFamily: font('bold') }]}
             >
-              {t('foryou.retry')}
+              {t('pods.retry')}
             </Text>
           </Pressable>
         ) : null}
@@ -1672,7 +1672,7 @@ function ForYouTranscriptMode({
             ref={scrollRef}
             showsVerticalScrollIndicator={false}
             style={styles.transcriptScroll}
-            testID="for-you-transcript-list"
+            testID="pods-transcript-list"
           >
             <View style={styles.transcriptCueStack}>
               {presentation.cues.map((cue, index) => {
@@ -1727,10 +1727,10 @@ function ForYouTranscriptMode({
             onTranscriptDragChange(false);
           }}
           style={styles.returnToLive}
-          testID="for-you-transcript-return-live"
+          testID="pods-transcript-return-live"
         >
           <Text style={[styles.returnToLiveText, { fontFamily: font('bold') }]}>
-            {t('foryou.returnToLive')}
+            {t('pods.returnToLive')}
           </Text>
         </Pressable>
       ) : null}
@@ -1738,7 +1738,7 @@ function ForYouTranscriptMode({
   );
 }
 
-function ForYouOverflowSheet({
+function PodsOverflowSheet({
   onClose,
   onHide,
   onMuteSource,
@@ -1762,16 +1762,16 @@ function ForYouOverflowSheet({
     >
       <View style={styles.overflowRoot}>
         <Pressable
-          accessibilityLabel={t('foryou.closeOverflow')}
+          accessibilityLabel={t('pods.closeOverflow')}
           accessibilityRole="button"
           onPress={onClose}
           style={styles.overflowScrim}
         />
         <View style={styles.overflowSheet}>
           <View style={styles.overflowHeader}>
-            <Text style={styles.overflowTitle}>{t('foryou.moreActions')}</Text>
+            <Text style={styles.overflowTitle}>{t('pods.moreActions')}</Text>
             <Pressable
-              accessibilityLabel={t('foryou.closeOverflow')}
+              accessibilityLabel={t('pods.closeOverflow')}
               accessibilityRole="button"
               onPress={onClose}
               style={styles.overflowClose}
@@ -1780,7 +1780,7 @@ function ForYouOverflowSheet({
             </Pressable>
           </View>
           <Pressable
-            accessibilityHint={t('foryou.hideItemDescription')}
+            accessibilityHint={t('pods.hideItemDescription')}
             accessibilityRole="button"
             onPress={onHide}
             style={({ pressed }) => [
@@ -1790,15 +1790,15 @@ function ForYouOverflowSheet({
           >
             <EyeOff color={colors.pressRedDark} size={21} />
             <View style={styles.hideActionCopy}>
-              <Text style={styles.hideActionTitle}>{t('foryou.hideItem')}</Text>
+              <Text style={styles.hideActionTitle}>{t('pods.hideItem')}</Text>
               <Text style={styles.hideActionDescription}>
-                {t('foryou.hideItemDescription')}
+                {t('pods.hideItemDescription')}
               </Text>
             </View>
           </Pressable>
           {onMuteSource ? (
             <Pressable
-              accessibilityHint={t('foryou.muteSourceDescription')}
+              accessibilityHint={t('pods.muteSourceDescription')}
               accessibilityRole="button"
               onPress={onMuteSource}
               style={({ pressed }) => [
@@ -1809,10 +1809,10 @@ function ForYouOverflowSheet({
               <EyeOff color={colors.ink} size={21} />
               <View style={styles.hideActionCopy}>
                 <Text style={styles.hideActionTitle}>
-                  {t('foryou.muteSource')}
+                  {t('pods.muteSource')}
                 </Text>
                 <Text style={styles.hideActionDescription}>
-                  {t('foryou.muteSourceDescription')}
+                  {t('pods.muteSourceDescription')}
                 </Text>
               </View>
             </Pressable>
@@ -1841,17 +1841,17 @@ function ForYouOverflowSheet({
   );
 }
 
-function ForYouLoading() {
+function PodsLoading() {
   const { t } = useTranslation();
   return (
     <SafeAreaView style={styles.loadingScreen}>
       <ActivityIndicator color={colors.pressRed} />
-      <Text style={styles.loadingText}>{t('foryou.loading')}</Text>
+      <Text style={styles.loadingText}>{t('pods.loading')}</Text>
     </SafeAreaView>
   );
 }
 
-function ForYouFailure({
+function PodsFailure({
   offline,
   onRetry,
 }: {
@@ -1863,31 +1863,31 @@ function ForYouFailure({
     <SafeAreaView style={styles.loadingScreen}>
       <WifiOff color={colors.pressRed} size={31} />
       <Text style={styles.failureTitle}>
-        {offline ? t('foryou.coldOfflineTitle') : t('foryou.unavailable')}
+        {offline ? t('pods.coldOfflineTitle') : t('pods.unavailable')}
       </Text>
       <Text style={styles.failureText}>
         {offline
-          ? t('foryou.coldOfflineCopy')
-          : t('foryou.unavailableDescription')}
+          ? t('pods.coldOfflineCopy')
+          : t('pods.unavailableDescription')}
       </Text>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
-          offline ? t('foryou.checkConnection') : t('foryou.retry')
+          offline ? t('pods.checkConnection') : t('pods.retry')
         }
         onPress={onRetry}
         style={styles.retryButton}
       >
         <RotateCcw color={colors.inkInverse} size={18} />
         <Text style={styles.retryText}>
-          {offline ? t('foryou.checkConnection') : t('foryou.retry')}
+          {offline ? t('pods.checkConnection') : t('pods.retry')}
         </Text>
       </Pressable>
     </SafeAreaView>
   );
 }
 
-function ForYouEmpty({
+function PodsEmpty({
   onRefresh,
   refreshing,
 }: {
@@ -1897,18 +1897,18 @@ function ForYouEmpty({
   const { t } = useTranslation();
   return (
     <SafeAreaView style={styles.loadingScreen}>
-      <Text style={styles.failureTitle}>{t('foryou.caughtUp')}</Text>
-      <Text style={styles.failureText}>{t('foryou.caughtUpDescription')}</Text>
+      <Text style={styles.failureTitle}>{t('pods.caughtUp')}</Text>
+      <Text style={styles.failureText}>{t('pods.caughtUpDescription')}</Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel={t('foryou.refreshSession')}
+        accessibilityLabel={t('pods.refreshSession')}
         disabled={refreshing}
         onPress={onRefresh}
         style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
       >
         <RotateCcw color={colors.inkInverse} size={18} />
         <Text style={styles.retryText}>
-          {refreshing ? t('foryou.refreshing') : t('foryou.refreshSession')}
+          {refreshing ? t('pods.refreshing') : t('pods.refreshSession')}
         </Text>
       </Pressable>
     </SafeAreaView>

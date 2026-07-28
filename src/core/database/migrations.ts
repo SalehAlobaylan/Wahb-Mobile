@@ -17,7 +17,7 @@ export const migrations: readonly Migration[] = [
 
       CREATE TABLE IF NOT EXISTS feed_sessions (
         id TEXT PRIMARY KEY NOT NULL,
-        feed_type TEXT NOT NULL CHECK (feed_type IN ('foryou', 'news')),
+        feed_type TEXT NOT NULL CHECK (feed_type IN ('pods', 'news')),
         identity_scope TEXT NOT NULL,
         cursor TEXT,
         status TEXT NOT NULL CHECK (status IN ('active', 'exhausted', 'expired')),
@@ -233,6 +233,32 @@ export const migrations: readonly Migration[] = [
         ON event_outbox(status, next_attempt_at, sequence);
       CREATE INDEX IF NOT EXISTS idx_event_outbox_claim_recovery
         ON event_outbox(identity_scope, status, claimed_at);
+    `,
+  },
+  {
+    // Existing installs created this table while the media feed was named
+    // `foryou`. SQLite CHECK constraints are immutable, so clear only the
+    // replaceable local feed cache before rebuilding its parent table with the
+    // canonical Pods value. Durable interactions and all other local state
+    // remain untouched.
+    version: 14,
+    statements: `
+      DELETE FROM feed_session_items;
+      DROP TABLE feed_sessions;
+      CREATE TABLE feed_sessions (
+        id TEXT PRIMARY KEY NOT NULL,
+        feed_type TEXT NOT NULL CHECK (feed_type IN ('pods', 'news')),
+        identity_scope TEXT NOT NULL,
+        cursor TEXT,
+        status TEXT NOT NULL CHECK (status IN ('active', 'exhausted', 'expired')),
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        active_position INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT '',
+        server_session_id TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_feed_sessions_scope
+        ON feed_sessions(identity_scope, feed_type, status);
     `,
   },
 ] as const;

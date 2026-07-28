@@ -2,9 +2,9 @@ appId: com.salehspace.wahb
 ---
 # Run on Android only. The feed fixture must be available before this flow.
 - launchApp
-- assertVisible: 'FOR YOU'
+- assertVisible: 'PODS'
 - tapOn:
     id: 'account-entry'
 - assertVisible: 'Account'
 - pressKey: Back
-- assertVisible: 'FOR YOU'
+- assertVisible: 'PODS'

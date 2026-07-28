@@ -5,9 +5,9 @@ import {
   formatTranscriptTime,
   normalizeTranscript,
   transcriptCues,
-} from './for-you-transcript-model';
+} from './pods-transcript-model';
 
-describe('For You transcript model', () => {
+describe('Pods transcript model', () => {
   it('groups provider-native words into timed readable cues', () => {
     const cues = transcriptCues(undefined, [
       { word: 'One', start: 0, end: 0.2 },

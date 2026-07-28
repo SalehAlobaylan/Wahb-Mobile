@@ -1,8 +1,8 @@
 import {
   commentsResponseSchema,
-  forYouFeedResponseSchema,
-  forYouSessionResponseSchema,
-  forYouSessionFreshnessResponseSchema,
+  podsFeedResponseSchema,
+  podsSessionResponseSchema,
+  podsSessionFreshnessResponseSchema,
   interactionResponseSchema,
   moderationReasonSchema,
   moderationReportResponseSchema,
@@ -19,9 +19,9 @@ import {
   newsFeedResponseSchema,
   transcriptResponseSchema,
   transcriptionRequestResponseSchema,
-  type ForYouFeedResponse,
-  type ForYouSessionResponse,
-  type ForYouSessionFreshnessResponse,
+  type PodsFeedResponse,
+  type PodsSessionResponse,
+  type PodsSessionFreshnessResponse,
   type InteractionType,
   type ArticleContent,
   type NewsFeedResponse,
@@ -43,9 +43,9 @@ import { HttpError } from './errors';
 // Initial frozen sessions involve CMS ranking and can take longer than a
 // regular interaction request on a local development data set. Do not present
 // that normal work as an offline failure after the transport default expires.
-export const forYouSessionCreationTimeoutMs = 120_000;
+export const podsSessionCreationTimeoutMs = 120_000;
 
-export type ForYouPageRequest = {
+export type PodsPageRequest = {
   cursor?: string;
   limit?: number;
   installationId: string;
@@ -57,16 +57,16 @@ export type ForYouPageRequest = {
 export type CmsApi = {
   getArticleContent(id: string, signal?: AbortSignal): Promise<ArticleContent>;
   getNewsPage(request: NewsPageRequest): Promise<NewsFeedResponse>;
-  getForYouPage(request: ForYouPageRequest): Promise<ForYouFeedResponse>;
-  createForYouSession(
-    request: ForYouSessionRequest,
-  ): Promise<ForYouSessionResponse>;
-  getForYouSessionPage(
-    request: ForYouSessionPageRequest,
-  ): Promise<ForYouSessionResponse>;
-  getForYouSessionFreshness(
-    request: ForYouSessionFreshnessRequest,
-  ): Promise<ForYouSessionFreshnessResponse>;
+  getPodsPage(request: PodsPageRequest): Promise<PodsFeedResponse>;
+  createPodsSession(
+    request: PodsSessionRequest,
+  ): Promise<PodsSessionResponse>;
+  getPodsSessionPage(
+    request: PodsSessionPageRequest,
+  ): Promise<PodsSessionResponse>;
+  getPodsSessionFreshness(
+    request: PodsSessionFreshnessRequest,
+  ): Promise<PodsSessionFreshnessResponse>;
   getComments(request: CommentsRequest): Promise<CommentsResponse>;
   getTranscript(
     transcriptId: string,
@@ -121,22 +121,22 @@ export type DeleteInteractionRequest = {
   signal?: AbortSignal;
 };
 
-export type ForYouSessionRequest = {
+export type PodsSessionRequest = {
   installationId: string;
   limit?: number;
   signal?: AbortSignal;
   contentLanguage?: 'ar' | 'en' | 'both';
-  /** The CMS resolves this to its nearest legal For You duration bucket. */
+  /** The CMS resolves this to its nearest legal Pods duration bucket. */
   duration?: 5 | 10 | 15 | 20 | 30 | 40;
 };
 
-export type ForYouSessionPageRequest = ForYouSessionRequest & {
+export type PodsSessionPageRequest = PodsSessionRequest & {
   sessionId: string;
   cursor?: string;
 };
 
-export type ForYouSessionFreshnessRequest = Pick<
-  ForYouSessionRequest,
+export type PodsSessionFreshnessRequest = Pick<
+  PodsSessionRequest,
   'installationId' | 'signal' | 'duration'
 > & {
   sessionId: string;
@@ -154,7 +154,7 @@ export type SavedContentRequest = {
   cursor?: string;
   limit?: number;
   sort?: 'saved_desc' | 'saved_asc';
-  feed?: 'all' | 'foryou' | 'news';
+  feed?: 'all' | 'pods' | 'news';
   /** Device identity keeps anonymous bookmarks visible before sign-in. */
   installationId?: string;
   /** Server-side title, source, and author search. */
@@ -212,7 +212,7 @@ export function createCmsApi(transport: Transport): CmsApi {
         newsFeedResponseSchema,
       );
     },
-    getForYouPage({
+    getPodsPage({
       cursor,
       limit = 10,
       installationId,
@@ -222,7 +222,7 @@ export function createCmsApi(transport: Transport): CmsApi {
     }) {
       return transport.request(
         {
-          path: '/api/v1/feed/foryou',
+          path: '/api/v1/feed/pods',
           query: {
             ...(cursor ? { cursor } : {}),
             limit,
@@ -233,10 +233,10 @@ export function createCmsApi(transport: Transport): CmsApi {
           signal,
           authenticated: true,
         },
-        forYouFeedResponseSchema,
+        podsFeedResponseSchema,
       );
     },
-    createForYouSession({
+    createPodsSession({
       installationId,
       limit = 10,
       signal,
@@ -245,7 +245,7 @@ export function createCmsApi(transport: Transport): CmsApi {
     }) {
       return transport.request(
         {
-          path: '/api/v1/feed/foryou/sessions',
+          path: '/api/v1/feed/pods/sessions',
           method: 'POST',
           query: {
             limit,
@@ -254,13 +254,13 @@ export function createCmsApi(transport: Transport): CmsApi {
             ...(duration ? { duration } : {}),
           },
           signal,
-          timeoutMs: forYouSessionCreationTimeoutMs,
+          timeoutMs: podsSessionCreationTimeoutMs,
           authenticated: true,
         },
-        forYouSessionResponseSchema,
+        podsSessionResponseSchema,
       );
     },
-    getForYouSessionPage({
+    getPodsSessionPage({
       installationId,
       sessionId,
       cursor,
@@ -269,7 +269,7 @@ export function createCmsApi(transport: Transport): CmsApi {
     }) {
       return transport.request(
         {
-          path: `/api/v1/feed/foryou/sessions/${sessionId}`,
+          path: `/api/v1/feed/pods/sessions/${sessionId}`,
           query: {
             ...(cursor ? { cursor } : {}),
             limit,
@@ -278,13 +278,13 @@ export function createCmsApi(transport: Transport): CmsApi {
           signal,
           authenticated: true,
         },
-        forYouSessionResponseSchema,
+        podsSessionResponseSchema,
       );
     },
-    getForYouSessionFreshness({ installationId, sessionId, signal, duration }) {
+    getPodsSessionFreshness({ installationId, sessionId, signal, duration }) {
       return transport.request(
         {
-          path: `/api/v1/feed/foryou/sessions/${sessionId}/freshness`,
+          path: `/api/v1/feed/pods/sessions/${sessionId}/freshness`,
           query: {
             session_id: installationId,
             ...(duration ? { duration } : {}),
@@ -292,7 +292,7 @@ export function createCmsApi(transport: Transport): CmsApi {
           signal,
           authenticated: true,
         },
-        forYouSessionFreshnessResponseSchema,
+        podsSessionFreshnessResponseSchema,
       );
     },
     getComments({ contentId, installationId, cursor, limit = 20, signal }) {

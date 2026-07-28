@@ -396,7 +396,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
         >
           <Pressable
             accessibilityLabel={
-              isBookmarked ? t('foryou.removeBookmark') : t('foryou.bookmark')
+              isBookmarked ? t('pods.removeBookmark') : t('pods.bookmark')
             }
             accessibilityRole="button"
             onPress={() => void toggleBookmark()}
@@ -409,7 +409,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
             />
           </Pressable>
           <Pressable
-            accessibilityLabel={t('foryou.share')}
+            accessibilityLabel={t('pods.share')}
             accessibilityRole="button"
             onPress={() => void shareArticle()}
             style={styles.headerAction}

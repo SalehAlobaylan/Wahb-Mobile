@@ -39,7 +39,7 @@ ID, credentials, signing identifiers, update URL, or update group IDs.
 1. Publish the already-validated group to the `production` channel using the
    EAS rollout controls available at the time of release. Start with the
    smallest supported percentage.
-2. Monitor only privacy-safe operational signals: startup, For You first
+2. Monitor only privacy-safe operational signals: startup, Pods first
    render/session health, playback start/buffer/fallback timing, outbox health,
    crash-free sessions, and support reports. Do not add user-identifying
    dimensions to diagnose a rollout.

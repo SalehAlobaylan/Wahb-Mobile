@@ -36,7 +36,7 @@ describe('diagnostic allow-list', () => {
     expect(diagnosticNames).toEqual(
       expect.arrayContaining([
         'app_start',
-        'foryou_first_render',
+        'pods_first_render',
         'playback_buffer_duration',
         'playback_fallback_duration',
         'outbox_health',

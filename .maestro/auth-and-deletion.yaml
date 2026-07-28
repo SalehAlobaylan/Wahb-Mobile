@@ -14,7 +14,7 @@ appId: com.salehspace.wahb
 - inputText: ${MAESTRO_PASSWORD}
 - tapOn:
     id: 'auth-submit'
-- assertVisible: 'FOR YOU'
+- assertVisible: 'PODS'
 - tapOn:
     id: 'account-entry'
 - tapOn:

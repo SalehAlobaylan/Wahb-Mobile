@@ -60,7 +60,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
             onContentTombstone: async (contentId) => {
               await recordContentTombstone(db, contentId);
               await queryClient.invalidateQueries({
-                queryKey: ['foryou-session'],
+                queryKey: ['pods-session'],
               });
             },
             onPermanentRejection: async (event, status) => {
@@ -68,7 +68,7 @@ export function OutboxProvider({ children }: { children: ReactNode }) {
               // notification. The action was optimistic, so make the reconciliation
               // visible and re-read affected data from its server owner.
               await queryClient.invalidateQueries({
-                queryKey: ['foryou-session'],
+                queryKey: ['pods-session'],
               });
               await queryClient.invalidateQueries({
                 queryKey: ['saved-content'],

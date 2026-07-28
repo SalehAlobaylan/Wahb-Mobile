@@ -22,5 +22,5 @@ appId: com.salehspace.wahb
     id: 'settings-ui-language-ar'
 - stopApp
 - launchApp
-- assertVisible: 'من أجلك'
-- takeScreenshot: 'for-you-rtl'
+- assertVisible: 'سمعيات'
+- takeScreenshot: 'pods-rtl'

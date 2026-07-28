@@ -21,15 +21,15 @@ export const resources = {
         rejectedTitle: 'تعذّر حفظ إجراء حديث',
         rejectedCopy: 'لم يتغير المحتوى على وهب. حاول تنفيذ الإجراء مرة أخرى.',
       },
-      foryou: {
-        feedLabel: 'من أجلك',
+      pods: {
+        feedLabel: 'سمعيات',
         loading: 'جارٍ إعداد جلستك…',
         unavailable: 'تعذّر تحميل المحتوى الآن.',
         unavailableDescription:
           'احتفظنا بأي جلسة محفوظة. حاول مجددًا عند عودة الاتصال.',
         coldOfflineTitle: 'أنت غير متصل بالإنترنت',
         coldOfflineCopy:
-          'لا توجد جلسة محفوظة على هذا الجهاز بعد. اتصل بالإنترنت لبدء «من أجلك».',
+          'لا توجد جلسة محفوظة على هذا الجهاز بعد. اتصل بالإنترنت لبدء «سمعيات».',
         checkConnection: 'التحقق من الاتصال',
         offlineSnapshot: 'تصفح نسخة محفوظة دون اتصال',
         connectToPlay: 'اتصل بالإنترنت للتشغيل',
@@ -252,7 +252,7 @@ export const resources = {
         savedSubtitle: 'كل ما قمت بحفظه في مكان واحد.',
         historyTitle: 'سجل المشاهدة',
         all: 'الكل',
-        forYou: 'من أجلك',
+        pods: 'سمعيات',
         news: 'الأخبار',
         newest: 'الأحدث',
         oldest: 'الأقدم',
@@ -274,9 +274,9 @@ export const resources = {
         badgeNEWS: 'مقال',
         badgePODCAST: 'بودكاست',
         badgeVIDEO: 'فيديو',
-        emptyForYouTitle: 'لا توجد محفوظات من أجلك',
-        emptyForYouCopy:
-          'احفظ المقاطع أو البودكاست من صفحة من أجلك وستظهر هنا.',
+        emptyPodsTitle: 'لا توجد محفوظات سمعيات',
+        emptyPodsCopy:
+          'احفظ المقاطع أو البودكاست من صفحة سمعيات وستظهر هنا.',
         emptyNewsTitle: 'لا توجد أخبار محفوظة',
         emptyNewsCopy: 'احفظ القصص من صفحة الأخبار واقرأها مرة أخرى هنا.',
         emptySearchTitle: 'لا توجد نتائج محفوظة',
@@ -349,7 +349,7 @@ export const resources = {
           'تُرسل هذه التفضيلات إلى وهب لتحسين الترتيب. لا تُستخدم لتصفية المحتوى محليًا.',
         saveInterests: 'حفظ الاهتمامات',
         mutedSources: 'المصادر المكتومة',
-        mutedSourcesCopy: 'لن تظهر هذه المصادر في «من أجلك» حتى تستعيدها.',
+        mutedSourcesCopy: 'لن تظهر هذه المصادر في «سمعيات» حتى تستعيدها.',
         restoreSource: 'استعادة',
       },
       settings: {
@@ -448,15 +448,15 @@ export const resources = {
         rejectedCopy:
           'Content on Wahb was not changed. Please try the action again.',
       },
-      foryou: {
-        feedLabel: 'FOR YOU',
+      pods: {
+        feedLabel: 'PODS',
         loading: 'Preparing your session…',
         unavailable: 'Content is unavailable right now.',
         unavailableDescription:
           'Any saved session remains safe. Try again when the connection returns.',
         coldOfflineTitle: 'You’re offline',
         coldOfflineCopy:
-          'There is no saved session on this device yet. Connect to start For You.',
+          'There is no saved session on this device yet. Connect to start Pods.',
         checkConnection: 'Check connection',
         offlineSnapshot: 'Viewing a saved offline session',
         connectToPlay: 'Connect to play',
@@ -688,7 +688,7 @@ export const resources = {
         savedSubtitle: 'Your bookmarked content, all in one place.',
         historyTitle: 'Watch history',
         all: 'All',
-        forYou: 'For You',
+        pods: 'Pods',
         news: 'News',
         newest: 'Newest',
         oldest: 'Oldest',
@@ -710,9 +710,9 @@ export const resources = {
         badgeNEWS: 'Article',
         badgePODCAST: 'Podcast',
         badgeVIDEO: 'Video',
-        emptyForYouTitle: 'No saved For You items',
-        emptyForYouCopy:
-          'Save podcasts or videos from For You and they will stay here.',
+        emptyPodsTitle: 'No saved Pods items',
+        emptyPodsCopy:
+          'Save podcasts or videos from Pods and they will stay here.',
         emptyNewsTitle: 'No saved News items',
         emptyNewsCopy: 'Save stories from News and read them again here.',
         emptySearchTitle: 'No saved matches',
@@ -793,7 +793,7 @@ export const resources = {
         saveInterests: 'Save interests',
         mutedSources: 'Muted sources',
         mutedSourcesCopy:
-          'These sources stay out of For You until you restore them.',
+          'These sources stay out of Pods until you restore them.',
         restoreSource: 'Restore',
       },
       settings: {
@@ -829,7 +829,7 @@ export const resources = {
         themeLight: 'Light',
         themeDark: 'Dark',
         autoplay: 'Autoplay',
-        autoplayCopy: 'Start the active For You item automatically.',
+        autoplayCopy: 'Start the active Pods item automatically.',
         haptics: 'Haptics',
         hapticsCopy: 'Light tactile feedback for supported actions.',
         speed: 'Default playback speeds',
@@ -853,7 +853,7 @@ export const resources = {
       moderation: {
         reportTitle: 'Report content',
         reportCopy:
-          'After reporting, this target is hidden for you while the moderation team reviews it.',
+          'After reporting, this target is hidden pods while the moderation team reviews it.',
         submit: 'Send report',
         detail: 'Describe the issue',
         report: 'Report',

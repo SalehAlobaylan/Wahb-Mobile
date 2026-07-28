@@ -2,13 +2,13 @@ appId: com.salehspace.wahb
 ---
 - launchApp:
     clearState: false
-- assertVisible: 'FOR YOU'
+- assertVisible: 'PODS'
 - tapOn: 'NEWS'
 - assertVisible: 'NEWS'
 - tapOn: 'NEWS'
 - assertVisible: 'Today'
 - tapOn: 'Today'
-- tapOn: 'FOR YOU'
+- tapOn: 'PODS'
 - tapOn:
-    id: 'for-you-playback-toggle'
-- takeScreenshot: 'ui-parity-for-you'
+    id: 'pods-playback-toggle'
+- takeScreenshot: 'ui-parity-pods'

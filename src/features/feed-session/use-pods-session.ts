@@ -11,31 +11,31 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { readLanguagePreferences } from '@/features/settings/language-preferences';
 
 import {
-  loadFreshForYouSession,
-  appendForYouSessionPage,
-  hideForYouItem,
-  loadRecoverableForYouSession,
-  materializeForYouSession,
-  type FrozenForYouSession,
-} from './for-you-session-repository';
+  loadFreshPodsSession,
+  appendPodsSessionPage,
+  hidePodsItem,
+  loadRecoverablePodsSession,
+  materializePodsSession,
+  type FrozenPodsSession,
+} from './pods-session-repository';
 import {
   consumePaginationToken,
   createPaginationBudget,
 } from './pagination-policy';
 
-export type ForYouDurationPreference = 5 | 10 | 15 | 20 | 30 | 40;
+export type PodsDurationPreference = 5 | 10 | 15 | 20 | 30 | 40;
 
-export function forYouSessionScope(
+export function podsSessionScope(
   identityScope: string | undefined,
   contentLanguage: string,
-  duration?: ForYouDurationPreference,
+  duration?: PodsDurationPreference,
 ): string | undefined {
   return identityScope
     ? `${identityScope}:content-language:${contentLanguage}:duration:${duration ?? 'all'}`
     : undefined;
 }
 
-export function useForYouSession(duration?: ForYouDurationPreference) {
+export function usePodsSession(duration?: PodsDurationPreference) {
   const db = useSQLiteContext();
   const queryClient = useQueryClient();
   const { clients, subject } = useAuth();
@@ -64,13 +64,13 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
   const contentLanguage = languageQuery.data?.contentLanguage ?? 'both';
   // A delivery preference changes server inventory. It therefore partitions
   // only the local frozen-session ledger, never the account/outbox identity.
-  const sessionScope = forYouSessionScope(
+  const sessionScope = podsSessionScope(
     identityScope,
     contentLanguage,
     duration,
   );
-  const sessionQuery = useQuery<FrozenForYouSession>({
-    queryKey: ['foryou-session', sessionScope],
+  const sessionQuery = useQuery<FrozenPodsSession>({
+    queryKey: ['pods-session', sessionScope],
     enabled: Boolean(
       installationId && sessionScope && !languageQuery.isPending,
     ),
@@ -79,23 +79,23 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
         throw new Error('Installation identity is unavailable.');
       }
 
-      const restored = await loadFreshForYouSession(db, sessionScope);
+      const restored = await loadFreshPodsSession(db, sessionScope);
       if (restored) {
-        captureDiagnostic('foryou_session_health', {
+        captureDiagnostic('pods_session_health', {
           event_type: 'fresh_restore',
         });
         return restored;
       }
 
       try {
-        const page = await clients.cms.createForYouSession({
+        const page = await clients.cms.createPodsSession({
           installationId,
           limit: 10,
           contentLanguage,
           duration,
           signal,
         });
-        return materializeForYouSession(
+        return materializePodsSession(
           db,
           sessionScope,
           page,
@@ -103,10 +103,10 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
           page.expiresAt,
         );
       } catch (error) {
-        const recovery = await loadRecoverableForYouSession(db, sessionScope);
+        const recovery = await loadRecoverablePodsSession(db, sessionScope);
         if (recovery) {
           const createdAtMs = new Date(recovery.createdAt).getTime();
-          captureException('foryou_session_offline_restore', error, {
+          captureException('pods_session_offline_restore', error, {
             ...(Number.isFinite(createdAtMs)
               ? { snapshot_age_ms: Math.max(0, Date.now() - createdAtMs) }
               : {}),
@@ -140,25 +140,25 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
     }
     paginationInFlight.current = true;
     try {
-      const page = await clients.cms.getForYouSessionPage({
+      const page = await clients.cms.getPodsSessionPage({
         installationId,
         sessionId: current.serverSessionId,
         cursor: current.cursor,
         limit: 10,
       });
-      const updated = await appendForYouSessionPage(
+      const updated = await appendPodsSessionPage(
         db,
         current.id,
         sessionScope,
         page,
       );
       if (updated) {
-        queryClient.setQueryData(['foryou-session', sessionScope], updated);
+        queryClient.setQueryData(['pods-session', sessionScope], updated);
         return true;
       }
       return false;
     } catch (error) {
-      captureException('foryou_session_page_failed', error);
+      captureException('pods_session_page_failed', error);
       return false;
     } finally {
       paginationInFlight.current = false;
@@ -178,20 +178,20 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
     }
     // Materialization expires the prior session only after this request has
     // succeeded, so a failed refresh leaves the current frozen session intact.
-    const page = await clients.cms.createForYouSession({
+    const page = await clients.cms.createPodsSession({
       installationId,
       limit: 10,
       contentLanguage,
       duration,
     });
-    const updated = await materializeForYouSession(
+    const updated = await materializePodsSession(
       db,
       sessionScope,
       page,
       page.serverSessionId,
       page.expiresAt,
     );
-    queryClient.setQueryData(['foryou-session', sessionScope], updated);
+    queryClient.setQueryData(['pods-session', sessionScope], updated);
   }, [
     clients.cms,
     contentLanguage,
@@ -211,7 +211,7 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
     ) {
       return false;
     }
-    const response = await clients.cms.getForYouSessionFreshness({
+    const response = await clients.cms.getPodsSessionFreshness({
       installationId,
       sessionId: current.serverSessionId,
       duration,
@@ -220,17 +220,17 @@ export function useForYouSession(duration?: ForYouDurationPreference) {
   }, [clients.cms, duration, installationId, sessionQuery.data]);
 
   const hideItem = useCallback(
-    async (contentId: string): Promise<FrozenForYouSession | null> => {
+    async (contentId: string): Promise<FrozenPodsSession | null> => {
       if (!installationId || !sessionScope || !sessionQuery.data) {
         return null;
       }
-      const updated = await hideForYouItem(
+      const updated = await hidePodsItem(
         db,
         sessionQuery.data.id,
         sessionScope,
         contentId,
       );
-      queryClient.setQueryData(['foryou-session', sessionScope], updated);
+      queryClient.setQueryData(['pods-session', sessionScope], updated);
       return updated;
     },
     [db, installationId, queryClient, sessionQuery.data, sessionScope],

@@ -14,15 +14,15 @@ import {
 } from '@/design/tokens';
 import { useWahbTheme } from '@/design/theme';
 import { useWahbTypography } from '@/design/typography';
-import type { ForYouDurationPreference } from '@/features/feed-session/use-for-you-session';
+import type { PodsDurationPreference } from '@/features/feed-session/use-pods-session';
 
 const feedRoutes = [
-  { href: '/', key: 'foryou' },
+  { href: '/', key: 'pods' },
   { href: '/news', key: 'news' },
   { href: '/saved', key: 'saved' },
 ] as const;
 
-const durationOptions: readonly ForYouDurationPreference[] = [
+const durationOptions: readonly PodsDurationPreference[] = [
   5, 10, 15, 20, 30, 40,
 ];
 
@@ -47,8 +47,8 @@ function FeedTabs({
       {feedRoutes.map((route) => {
         const active = pathname === route.href;
         const label = t(
-          route.key === 'foryou'
-            ? 'foryou.feedLabel'
+          route.key === 'pods'
+            ? 'pods.feedLabel'
             : route.key === 'news'
               ? 'news.feedLabel'
               : 'library.savedTitle',
@@ -133,19 +133,19 @@ function ChromeButtons({ variant }: { variant: 'overlay' | 'editorial' }) {
   );
 }
 
-export function ForYouFeedChrome({
+export function PodsFeedChrome({
   duration,
   onDurationChange,
 }: {
-  duration?: ForYouDurationPreference;
-  onDurationChange: (duration?: ForYouDurationPreference) => void;
+  duration?: PodsDurationPreference;
+  onDurationChange: (duration?: PodsDurationPreference) => void;
 }) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.forYouRoot, { paddingTop: insets.top + spacing.xs }]}
+      style={[styles.podsRoot, { paddingTop: insets.top + spacing.xs }]}
     >
       <View style={styles.chromeRow}>
         <ChromeButtons variant="overlay" />
@@ -157,8 +157,8 @@ export function ForYouFeedChrome({
       </View>
       <View pointerEvents="auto" style={styles.durationStrip}>
         <Pressable
-          accessibilityLabel={t('foryou.duration', {
-            duration: t('foryou.durationAll'),
+          accessibilityLabel={t('pods.duration', {
+            duration: t('pods.durationAll'),
           })}
           accessibilityRole="button"
           onPress={() => onDurationChange(undefined)}
@@ -170,12 +170,12 @@ export function ForYouFeedChrome({
               !duration && styles.durationTextActive,
             ]}
           >
-            {t('foryou.durationAll')}
+            {t('pods.durationAll')}
           </Text>
         </Pressable>
         {durationOptions.map((option) => (
           <Pressable
-            accessibilityLabel={t('foryou.duration', {
+            accessibilityLabel={t('pods.duration', {
               duration: `${option}m`,
             })}
             accessibilityRole="button"
@@ -263,10 +263,10 @@ export function NewsFeedChrome({
   );
 }
 
-export const feedChromeMetrics = { forYouHeight: 118, newsHeight: 60 } as const;
+export const feedChromeMetrics = { podsHeight: 118, newsHeight: 60 } as const;
 
 const styles = StyleSheet.create({
-  forYouRoot: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 20 },
+  podsRoot: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 20 },
   newsRoot: { left: 0, position: 'absolute', right: 0, top: 0, zIndex: 20 },
   chromeRow: {
     alignItems: 'center',

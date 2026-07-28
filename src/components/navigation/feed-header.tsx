@@ -23,7 +23,7 @@ type FeedHeaderProps = {
 };
 
 const routes = [
-  { key: 'foryou', href: '/' },
+  { key: 'pods', href: '/' },
   { key: 'news', href: '/news' },
   { key: 'saved', href: '/saved' },
 ] as const;
@@ -104,8 +104,8 @@ export function FeedHeader({
         {routes.map((route) => {
           const active = pathname === route.href;
           const label = t(
-            route.key === 'foryou'
-              ? 'foryou.feedLabel'
+            route.key === 'pods'
+              ? 'pods.feedLabel'
               : route.key === 'news'
                 ? 'news.feedLabel'
                 : 'library.savedTitle',

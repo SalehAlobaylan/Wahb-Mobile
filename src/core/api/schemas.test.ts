@@ -4,9 +4,9 @@ import {
   articleContentResponseSchema,
   registerResponseSchema,
   commentsResponseSchema,
-  forYouFeedResponseSchema,
-  forYouSessionResponseSchema,
-  forYouSessionFreshnessResponseSchema,
+  podsFeedResponseSchema,
+  podsSessionResponseSchema,
+  podsSessionFreshnessResponseSchema,
   iamProfileSchema,
   newsFeedResponseSchema,
   myContentResponseSchema,
@@ -47,9 +47,9 @@ describe('IAM profile contract schema', () => {
   });
 });
 
-describe('For You contract schema', () => {
+describe('Pods contract schema', () => {
   it('normalizes CMS playback metadata into the native discriminated source', () => {
-    const parsed = forYouFeedResponseSchema.parse({
+    const parsed = podsFeedResponseSchema.parse({
       items: [validItem],
       cursor: null,
     });
@@ -63,7 +63,7 @@ describe('For You contract schema', () => {
   });
 
   it('accepts a fallback only when CMS provides its explicit type and video capability', () => {
-    const parsed = forYouFeedResponseSchema.parse({
+    const parsed = podsFeedResponseSchema.parse({
       items: [
         {
           ...validItem,
@@ -83,7 +83,7 @@ describe('For You contract schema', () => {
   });
 
   it('quarantines malformed playback metadata without rejecting valid feed units', () => {
-    const parsed = forYouFeedResponseSchema.parse({
+    const parsed = podsFeedResponseSchema.parse({
       items: [{ ...validItem, playback_type: 'stream' }, validItem],
     });
 
@@ -92,7 +92,7 @@ describe('For You contract schema', () => {
   });
 
   it('requires a CMS-owned session identifier when parsing frozen pages', () => {
-    const parsed = forYouSessionResponseSchema.parse({
+    const parsed = podsSessionResponseSchema.parse({
       session_id: 'b4a7e91c-9227-4c51-9fa8-9955e1e4c139',
       expires_at: '2026-07-19T18:00:00.000Z',
       cursor: null,
@@ -104,12 +104,12 @@ describe('For You contract schema', () => {
 
   it('normalizes the server-owned frozen-session freshness signal', () => {
     expect(
-      forYouSessionFreshnessResponseSchema.parse({ has_new_content: true }),
+      podsSessionFreshnessResponseSchema.parse({ has_new_content: true }),
     ).toEqual({ hasNewContent: true });
   });
 
   it('tolerates additive CMS fields', () => {
-    const parsed = forYouFeedResponseSchema.parse({
+    const parsed = podsFeedResponseSchema.parse({
       items: [{ ...validItem, future_server_field: { enabled: true } }],
     });
 

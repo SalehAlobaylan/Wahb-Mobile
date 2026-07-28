@@ -1,7 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 import type { ZodType } from 'zod';
 
-import { createCmsApi, forYouSessionCreationTimeoutMs } from './cms';
+import { createCmsApi, podsSessionCreationTimeoutMs } from './cms';
 import type { RequestOptions, Transport } from './transport';
 
 describe('CMS history contract', () => {
@@ -80,7 +80,7 @@ describe('CMS Saved contract', () => {
   });
 });
 
-describe('CMS For You freshness contract', () => {
+describe('CMS Pods freshness contract', () => {
   it('checks a frozen session without creating or replacing it', async () => {
     let captured: RequestOptions | undefined;
     const transport: Transport = {
@@ -91,20 +91,20 @@ describe('CMS For You freshness contract', () => {
     };
 
     await expect(
-      createCmsApi(transport).getForYouSessionFreshness({
+      createCmsApi(transport).getPodsSessionFreshness({
         installationId: 'install-freshness-1',
         sessionId: 'b4a7e91c-9227-4c51-9fa8-9955e1e4c139',
       }),
     ).resolves.toEqual({ hasNewContent: true });
 
     expect(captured).toMatchObject({
-      path: '/api/v1/feed/foryou/sessions/b4a7e91c-9227-4c51-9fa8-9955e1e4c139/freshness',
+      path: '/api/v1/feed/pods/sessions/b4a7e91c-9227-4c51-9fa8-9955e1e4c139/freshness',
       query: { session_id: 'install-freshness-1' },
     });
   });
 });
 
-describe('CMS For You delivery-language contract', () => {
+describe('CMS Pods delivery-language contract', () => {
   it('sends the explicit delivery preference only when creating a frozen session', async () => {
     let captured: RequestOptions | undefined;
     const transport: Transport = {
@@ -120,15 +120,15 @@ describe('CMS For You delivery-language contract', () => {
       },
     };
 
-    await createCmsApi(transport).createForYouSession({
+    await createCmsApi(transport).createPodsSession({
       installationId: 'install-language-1',
       contentLanguage: 'ar',
     });
 
     expect(captured).toMatchObject({
-      path: '/api/v1/feed/foryou/sessions',
+      path: '/api/v1/feed/pods/sessions',
       method: 'POST',
-      timeoutMs: forYouSessionCreationTimeoutMs,
+      timeoutMs: podsSessionCreationTimeoutMs,
       query: {
         limit: 10,
         session_id: 'install-language-1',
@@ -146,7 +146,7 @@ describe('CMS For You delivery-language contract', () => {
       },
     };
 
-    await createCmsApi(transport).getForYouPage({
+    await createCmsApi(transport).getPodsPage({
       installationId: 'install-language-1',
       contentLanguage: 'both',
     });
@@ -155,7 +155,7 @@ describe('CMS For You delivery-language contract', () => {
   });
 });
 
-describe('CMS For You duration contract', () => {
+describe('CMS Pods duration contract', () => {
   it('sends the requested duration only when creating the frozen snapshot', async () => {
     let captured: RequestOptions | undefined;
     const transport: Transport = {
@@ -170,7 +170,7 @@ describe('CMS For You duration contract', () => {
       },
     };
 
-    await createCmsApi(transport).createForYouSession({
+    await createCmsApi(transport).createPodsSession({
       installationId: 'install-duration-1',
       duration: 15,
     });

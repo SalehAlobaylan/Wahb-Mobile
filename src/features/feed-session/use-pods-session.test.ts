@@ -1,13 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { forYouSessionScope } from './use-for-you-session';
+import { podsSessionScope } from './use-pods-session';
 
-describe('For You duration session scope', () => {
+describe('Pods duration session scope', () => {
   it('keeps each duration in an independent frozen-session scope', () => {
-    expect(forYouSessionScope('anonymous:device', 'both')).toBe(
+    expect(podsSessionScope('anonymous:device', 'both')).toBe(
       'anonymous:device:content-language:both:duration:all',
     );
-    expect(forYouSessionScope('anonymous:device', 'both', 15)).toBe(
+    expect(podsSessionScope('anonymous:device', 'both', 15)).toBe(
       'anonymous:device:content-language:both:duration:15',
     );
   });

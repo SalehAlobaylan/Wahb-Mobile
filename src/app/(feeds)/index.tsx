@@ -1,5 +1,5 @@
-import { ForYouSliceScreen } from '@/features/for-you/for-you-slice-screen';
+import { PodsSliceScreen } from '@/features/pods/pods-slice-screen';
 
 export default function IndexRoute() {
-  return <ForYouSliceScreen />;
+  return <PodsSliceScreen />;
 }

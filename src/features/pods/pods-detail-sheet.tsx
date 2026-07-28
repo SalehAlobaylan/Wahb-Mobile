@@ -20,7 +20,7 @@ import {
 import { MessageCircle, FileText, Info, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
-import type { ForYouItem } from '@/core/api';
+import type { PodsItem } from '@/core/api';
 import {
   colors,
   fontFamilies,
@@ -38,18 +38,18 @@ import {
 } from '@/components/feed/draggable-bottom-sheet';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
-export type ForYouDetailSheetHandle = { open: (tab: DetailTab) => void };
+export type PodsDetailSheetHandle = { open: (tab: DetailTab) => void };
 
-type ForYouDetailSheetProps = {
-  item: ForYouItem;
+type PodsDetailSheetProps = {
+  item: PodsItem;
   installationId: string;
   collapsedContent: ReactNode;
 };
 
-export const ForYouDetailSheet = forwardRef<
-  ForYouDetailSheetHandle,
-  ForYouDetailSheetProps
->(function ForYouDetailSheet({ item, installationId, collapsedContent }, ref) {
+export const PodsDetailSheet = forwardRef<
+  PodsDetailSheetHandle,
+  PodsDetailSheetProps
+>(function PodsDetailSheet({ item, installationId, collapsedContent }, ref) {
   const { t } = useTranslation();
   const router = useRouter();
   const { clients, subject } = useAuth();
@@ -148,7 +148,7 @@ export const ForYouDetailSheet = forwardRef<
                 {item.title}
               </Text>
               <Pressable
-                accessibilityLabel={t('foryou.closeDetails')}
+                accessibilityLabel={t('pods.closeDetails')}
                 accessibilityRole="button"
                 hitSlop={8}
                 onPress={() => sheetRef.current?.collapse()}
@@ -161,19 +161,19 @@ export const ForYouDetailSheet = forwardRef<
               <SheetTabButton
                 active={tab === 'comments'}
                 icon={<MessageCircle size={16} />}
-                label={t('foryou.comments')}
+                label={t('pods.comments')}
                 onPress={() => selectTab('comments')}
               />
               <SheetTabButton
                 active={tab === 'transcript'}
                 icon={<FileText size={16} />}
-                label={t('foryou.transcript')}
+                label={t('pods.transcript')}
                 onPress={() => selectTab('transcript')}
               />
               <SheetTabButton
                 active={tab === 'about'}
                 icon={<Info size={16} />}
-                label={t('foryou.about')}
+                label={t('pods.about')}
                 onPress={() => selectTab('about')}
               />
             </View>
@@ -212,7 +212,7 @@ export const ForYouDetailSheet = forwardRef<
             </ScrollView>
           </View>
         }
-        testID="for-you-bottom-sheet"
+        testID="pods-bottom-sheet"
       >
         {collapsedContent}
       </DraggableBottomSheet>
@@ -307,20 +307,20 @@ function CommentsPanel({
   }
   if (isError) {
     return (
-      <RetryPanel label={t('foryou.commentsUnavailable')} onRetry={onRetry} />
+      <RetryPanel label={t('pods.commentsUnavailable')} onRetry={onRetry} />
     );
   }
   return (
     <View style={styles.list}>
       <View style={styles.commentComposer}>
         <TextInput
-          accessibilityLabel={t('foryou.commentInput')}
+          accessibilityLabel={t('pods.commentInput')}
           editable={canComment}
           onChangeText={onChangeDraft}
           placeholder={
             canComment
-              ? t('foryou.commentPlaceholder')
-              : t('foryou.commentSignIn')
+              ? t('pods.commentPlaceholder')
+              : t('pods.commentSignIn')
           }
           placeholderTextColor={colors.inkMuted}
           style={styles.commentInput}
@@ -332,28 +332,28 @@ function CommentsPanel({
           style={styles.commentSubmit}
         >
           <Text style={styles.commentSubmitText}>
-            {t('foryou.commentPost')}
+            {t('pods.commentPost')}
           </Text>
         </Pressable>
       </View>
       {comments.length === 0 ? (
-        <Text style={styles.emptyText}>{t('foryou.noComments')}</Text>
+        <Text style={styles.emptyText}>{t('pods.noComments')}</Text>
       ) : null}
       {comments.map((comment) => (
         <View key={comment.id} style={styles.comment}>
           <View style={styles.commentTopline}>
             <Text style={styles.commentAuthor}>
-              {comment.author || t('foryou.member')}
+              {comment.author || t('pods.member')}
             </Text>
             <View style={styles.commentActions}>
               {comment.is_mine ? (
                 <Pressable
-                  accessibilityLabel={t('foryou.deleteComment')}
+                  accessibilityLabel={t('pods.deleteComment')}
                   accessibilityRole="button"
                   onPress={() => void onDelete(comment.id)}
                 >
                   <Text style={styles.commentDelete}>
-                    {t('foryou.deleteComment')}
+                    {t('pods.deleteComment')}
                   </Text>
                 </Pressable>
               ) : (
@@ -396,13 +396,13 @@ function CommentsPanel({
             <ActivityIndicator color={colors.pressRed} />
           ) : (
             <Text style={styles.loadMoreText}>
-              {t('foryou.loadMoreComments')}
+              {t('pods.loadMoreComments')}
             </Text>
           )}
         </Pressable>
       ) : comments.length > 0 ? (
         <Text accessibilityLiveRegion="polite" style={styles.endOfComments}>
-          {t('foryou.endOfComments')}
+          {t('pods.endOfComments')}
         </Text>
       ) : null}
     </View>
@@ -424,20 +424,20 @@ function TranscriptPanel({
 }) {
   const { t } = useTranslation();
   if (!hasTranscript) {
-    return <Text style={styles.emptyText}>{t('foryou.noTranscript')}</Text>;
+    return <Text style={styles.emptyText}>{t('pods.noTranscript')}</Text>;
   }
   if (isLoading) {
     return <ActivityIndicator color={colors.pressRed} />;
   }
   if (isError) {
     return (
-      <RetryPanel label={t('foryou.transcriptUnavailable')} onRetry={onRetry} />
+      <RetryPanel label={t('pods.transcriptUnavailable')} onRetry={onRetry} />
     );
   }
   return <Text style={styles.transcriptText}>{text}</Text>;
 }
 
-function AboutPanel({ item }: { item: ForYouItem }) {
+function AboutPanel({ item }: { item: PodsItem }) {
   const { t } = useTranslation();
   return (
     <View style={styles.list}>
@@ -447,7 +447,7 @@ function AboutPanel({ item }: { item: ForYouItem }) {
         <Text style={styles.aboutText}>{item.source_name}</Text>
       )}
       <Text style={styles.aboutText}>
-        {t('foryou.duration', { duration: formatDuration(item.duration_sec) })}
+        {t('pods.duration', { duration: formatDuration(item.duration_sec) })}
       </Text>
     </View>
   );
@@ -469,7 +469,7 @@ function RetryPanel({
         onPress={onRetry}
         style={styles.retryButton}
       >
-        <Text style={styles.retryText}>{t('foryou.retry')}</Text>
+        <Text style={styles.retryText}>{t('pods.retry')}</Text>
       </Pressable>
     </View>
   );

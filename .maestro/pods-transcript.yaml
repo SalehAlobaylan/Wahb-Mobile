@@ -1,0 +1,9 @@
+appId: com.salehspace.wahb
+---
+- launchApp:
+    clearState: false
+- tapOn:
+    id: 'pods-display-transcript'
+- assertVisible:
+    id: 'pods-transcript-surface'
+- takeScreenshot: 'pods-transcript-surface'

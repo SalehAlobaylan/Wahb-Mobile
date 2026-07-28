@@ -1,6 +1,6 @@
 export type BottomSheetSnap = 'collapsed' | 'midpoint' | 'expanded';
 
-/** For You needs one compact action row below its handle. */
+/** Pods needs one compact action row below its handle. */
 export const collapsedSheetBaseHeight = 64;
 /** News has no collapsed actions: retain only the visible pull handle. */
 export const newsCollapsedSheetBaseHeight = 36;

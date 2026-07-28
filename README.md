@@ -7,7 +7,7 @@ React Native, targets iPhone first, and deliberately has no web target.
 
 - Anonymous users can browse public content. Personalization and interactions
   that require an identity begin after login.
-- For You is an audio-first, full-screen feed. News is an editorial,
+- Pods is an audio-first, full-screen feed. News is an editorial,
   story-slide experience.
 - Portrait orientation is enforced.
 - Arabic and English are first-class. Arabic uses Wahb's bundled Handicrafts

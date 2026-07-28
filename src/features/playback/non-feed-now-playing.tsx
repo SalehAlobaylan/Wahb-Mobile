@@ -141,8 +141,8 @@ export function NonFeedNowPlaying() {
           <Pressable
             accessibilityLabel={
               playback.phase === 'playing'
-                ? t('foryou.pause')
-                : t('foryou.play')
+                ? t('pods.pause')
+                : t('pods.play')
             }
             accessibilityRole="button"
             onPress={togglePlayback}
@@ -213,8 +213,8 @@ export function NonFeedNowPlaying() {
               <Pressable
                 accessibilityLabel={
                   playback.phase === 'playing'
-                    ? t('foryou.pause')
-                    : t('foryou.play')
+                    ? t('pods.pause')
+                    : t('pods.play')
                 }
                 accessibilityRole="button"
                 onPress={togglePlayback}
@@ -245,7 +245,7 @@ export function NonFeedNowPlaying() {
             </View>
             <View style={styles.row}>
               <Pressable
-                accessibilityLabel={t('foryou.changeSpeed', {
+                accessibilityLabel={t('pods.changeSpeed', {
                   rate: playback.rate,
                 })}
                 accessibilityRole="button"

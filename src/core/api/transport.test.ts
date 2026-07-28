@@ -11,7 +11,7 @@ describe('transport', () => {
       init?: RequestInit,
     ) => {
       expect(String(input)).toContain(
-        '/api/v1/feed/foryou?session_id=install-1',
+        '/api/v1/feed/pods?session_id=install-1',
       );
       expect(new Headers(init?.headers).get('Authorization')).toBeNull();
       return new Response(JSON.stringify({ ready: true }), { status: 200 });
@@ -23,7 +23,7 @@ describe('transport', () => {
 
     await expect(
       transport.request(
-        { path: '/api/v1/feed/foryou', query: { session_id: 'install-1' } },
+        { path: '/api/v1/feed/pods', query: { session_id: 'install-1' } },
         z.object({ ready: z.boolean() }),
       ),
     ).resolves.toEqual({ ready: true });
@@ -38,7 +38,7 @@ describe('transport', () => {
 
     await expect(
       transport.request(
-        { path: '/api/v1/feed/foryou' },
+        { path: '/api/v1/feed/pods' },
         z.object({ ready: z.boolean() }),
       ),
     ).rejects.toBeInstanceOf(ContractError);
@@ -55,7 +55,7 @@ describe('transport', () => {
 
     await expect(
       transport.request(
-        { path: '/api/v1/feed/foryou' },
+        { path: '/api/v1/feed/pods' },
         z.object({ ready: z.boolean() }),
       ),
     ).rejects.toBeInstanceOf(HttpError);

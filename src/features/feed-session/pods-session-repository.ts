@@ -2,7 +2,7 @@ import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { ConsumptionClassification } from '@/features/playback/consumption-classifier';
 
-import type { ForYouFeedResponse, ForYouItem } from '@/core/api';
+import type { PodsFeedResponse, PodsItem } from '@/core/api';
 import { tombstonedContentIds } from '@/core/database/tombstones';
 import { enqueueInteractionWithIds } from '@/core/outbox/outbox-repository';
 
@@ -24,7 +24,7 @@ type SessionItemRow = {
   playback_position_ms: number;
 };
 
-export type FrozenForYouSession = {
+export type FrozenPodsSession = {
   id: string;
   serverSessionId: string | null;
   cursor: string | null;
@@ -34,7 +34,7 @@ export type FrozenForYouSession = {
   /** A local snapshot shown only when a fresh CMS session cannot be reached. */
   isOfflineSnapshot?: boolean;
   items: {
-    item: ForYouItem;
+    item: PodsItem;
     playbackPositionMs: number;
   }[];
 };
@@ -44,14 +44,14 @@ export type FrozenForYouSession = {
  * This is intentionally a display-only recovery surface: callers must not
  * append live pages or present it as newly ranked inventory.
  */
-export async function loadRecoverableForYouSession(
+export async function loadRecoverablePodsSession(
   db: SQLiteDatabase,
   identityScope: string,
-): Promise<FrozenForYouSession | null> {
+): Promise<FrozenPodsSession | null> {
   const session = await db.getFirstAsync<SessionRow>(
     `SELECT id, server_session_id, cursor, status, active_position, created_at, expires_at
        FROM feed_sessions
-      WHERE feed_type = 'foryou'
+      WHERE feed_type = 'pods'
         AND identity_scope = ?
         AND status IN ('active', 'exhausted', 'expired')
       ORDER BY created_at DESC
@@ -71,12 +71,12 @@ export async function loadRecoverableForYouSession(
     const tombstones = await tombstonedContentIds(
       db,
       rows
-        .map((row) => JSON.parse(row.snapshot_json) as ForYouItem)
+        .map((row) => JSON.parse(row.snapshot_json) as PodsItem)
         .map((item) => item.id),
     );
     const items = rows
       .map((row) => ({
-        item: JSON.parse(row.snapshot_json) as ForYouItem,
+        item: JSON.parse(row.snapshot_json) as PodsItem,
         playbackPositionMs: row.playback_position_ms,
       }))
       .filter(({ item }) => !tombstones.has(item.id));
@@ -101,15 +101,15 @@ function nowIso(now: Date): string {
   return now.toISOString();
 }
 
-export async function loadFreshForYouSession(
+export async function loadFreshPodsSession(
   db: SQLiteDatabase,
   identityScope: string,
   now = new Date(),
-): Promise<FrozenForYouSession | null> {
+): Promise<FrozenPodsSession | null> {
   const session = await db.getFirstAsync<SessionRow>(
     `SELECT id, server_session_id, cursor, status, active_position, created_at, expires_at
        FROM feed_sessions
-      WHERE feed_type = 'foryou'
+      WHERE feed_type = 'pods'
         AND identity_scope = ?
         AND status IN ('active', 'exhausted')
       ORDER BY created_at DESC
@@ -141,12 +141,12 @@ export async function loadFreshForYouSession(
     const tombstones = await tombstonedContentIds(
       db,
       rows
-        .map((row) => JSON.parse(row.snapshot_json) as ForYouItem)
+        .map((row) => JSON.parse(row.snapshot_json) as PodsItem)
         .map((item) => item.id),
     );
     const items = rows
       .map((row) => ({
-        item: JSON.parse(row.snapshot_json) as ForYouItem,
+        item: JSON.parse(row.snapshot_json) as PodsItem,
         playbackPositionMs: row.playback_position_ms,
       }))
       .filter(({ item }) => !tombstones.has(item.id));
@@ -176,13 +176,13 @@ export async function loadFreshForYouSession(
  * Pages are appended to the existing immutable session. Never replace the
  * loaded order during pagination, even when the live CMS ranking shifts.
  */
-export async function appendForYouSessionPage(
+export async function appendPodsSessionPage(
   db: SQLiteDatabase,
   sessionId: string,
   identityScope: string,
-  page: ForYouFeedResponse,
+  page: PodsFeedResponse,
   now = new Date(),
-): Promise<FrozenForYouSession | null> {
+): Promise<FrozenPodsSession | null> {
   const updatedAt = nowIso(now);
   const pageTombstones = await tombstonedContentIds(
     db,
@@ -268,12 +268,12 @@ export async function appendForYouSessionPage(
     const tombstones = await tombstonedContentIds(
       db,
       items
-        .map((item) => JSON.parse(item.snapshot_json) as ForYouItem)
+        .map((item) => JSON.parse(item.snapshot_json) as PodsItem)
         .map((item) => item.id),
     );
     const parsedItems = items
       .map((item) => ({
-        item: JSON.parse(item.snapshot_json) as ForYouItem,
+        item: JSON.parse(item.snapshot_json) as PodsItem,
         playbackPositionMs: item.playback_position_ms,
       }))
       .filter(({ item }) => !tombstones.has(item.id));
@@ -286,20 +286,20 @@ export async function appendForYouSessionPage(
       createdAt: row.created_at,
       expiresAt: row.expires_at,
       items: parsedItems,
-    } satisfies FrozenForYouSession;
+    } satisfies FrozenPodsSession;
   } catch {
     return null;
   }
 }
 
-export async function materializeForYouSession(
+export async function materializePodsSession(
   db: SQLiteDatabase,
   identityScope: string,
-  page: ForYouFeedResponse,
+  page: PodsFeedResponse,
   serverSessionId: string | null,
   expiresAt: string,
   now = new Date(),
-): Promise<FrozenForYouSession> {
+): Promise<FrozenPodsSession> {
   const sessionId = Crypto.randomUUID();
   const createdAt = nowIso(now);
   const localExpiresAt = nowIso(createSessionExpiry(now));
@@ -330,7 +330,7 @@ export async function materializeForYouSession(
     await transaction.runAsync(
       `UPDATE feed_sessions
           SET status = 'expired', updated_at = ?
-        WHERE feed_type = 'foryou'
+        WHERE feed_type = 'pods'
           AND identity_scope = ?
           AND status = 'active'`,
       createdAt,
@@ -339,7 +339,7 @@ export async function materializeForYouSession(
     await transaction.runAsync(
       `INSERT INTO feed_sessions
         (id, feed_type, identity_scope, server_session_id, cursor, status, created_at, expires_at, active_position, updated_at)
-       VALUES (?, 'foryou', ?, ?, ?, 'active', ?, ?, 0, ?)`,
+       VALUES (?, 'pods', ?, ?, ?, 'active', ?, ?, 0, ?)`,
       sessionId,
       identityScope,
       serverSessionId,
@@ -378,13 +378,13 @@ export async function materializeForYouSession(
  * The frozen session is compacted in the same transaction so the removed item
  * cannot return after a process restart or while the device is offline.
  */
-export async function hideForYouItem(
+export async function hidePodsItem(
   db: SQLiteDatabase,
   sessionId: string,
   identityScope: string,
   contentId: string,
   now = new Date(),
-): Promise<FrozenForYouSession | null> {
+): Promise<FrozenPodsSession | null> {
   await db.withExclusiveTransactionAsync(async (transaction) => {
     const target = await transaction.getFirstAsync<{ position: number }>(
       `SELECT position
@@ -449,10 +449,10 @@ export async function hideForYouItem(
     );
   });
 
-  return loadFreshForYouSession(db, identityScope, now);
+  return loadFreshPodsSession(db, identityScope, now);
 }
 
-export async function updateForYouSessionPosition(
+export async function updatePodsSessionPosition(
   db: SQLiteDatabase,
   sessionId: string,
   position: number,
@@ -522,7 +522,7 @@ async function recordSessionInteraction(
   return recorded;
 }
 
-export function recordForYouExposure(
+export function recordPodsExposure(
   db: SQLiteDatabase,
   sessionId: string,
   position: number,
@@ -535,12 +535,12 @@ export function recordForYouExposure(
     identityScope,
     'view',
     {
-      surface: 'foryou',
+      surface: 'pods',
     },
   );
 }
 
-export function recordForYouCompletion(
+export function recordPodsCompletion(
   db: SQLiteDatabase,
   sessionId: string,
   position: number,
@@ -569,7 +569,7 @@ const consumptionStrength: Record<ConsumptionClassification, number> = {
 };
 
 /** Record each stronger consumption class at most once for a frozen item. */
-export async function recordForYouConsumption(
+export async function recordPodsConsumption(
   db: SQLiteDatabase,
   sessionId: string,
   position: number,
@@ -606,7 +606,7 @@ export async function recordForYouConsumption(
         contentId: item.content_id,
         type: classification === 'completed' ? 'complete' : classification,
         metadata: {
-          surface: 'foryou',
+          surface: 'pods',
           consumption_contract_version: 1,
           actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
           furthest_position_seconds: Math.max(
@@ -634,7 +634,7 @@ export async function recordForYouConsumption(
 }
 
 /** Queue a resumable checkpoint at most once per 30 seconds of new progress. */
-export async function recordForYouProgress(
+export async function recordPodsProgress(
   db: SQLiteDatabase,
   sessionId: string,
   position: number,
@@ -672,7 +672,7 @@ export async function recordForYouProgress(
         contentId: item.content_id,
         type: 'progress',
         metadata: {
-          surface: 'foryou',
+          surface: 'pods',
           position_seconds: normalizedPosition,
           actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
         },

@@ -1,4 +1,4 @@
-export type ForYouIntent =
+export type PodsIntent =
   | 'toggle-playback'
   | 'previous-item'
   | 'next-item'
@@ -6,11 +6,11 @@ export type ForYouIntent =
   | 'open-about'
   | 'open-overflow';
 
-export type ForYouIntentHandlers = Record<ForYouIntent, () => void>;
+export type PodsIntentHandlers = Record<PodsIntent, () => void>;
 
 /** Visual surfaces emit named intents; the screen controller owns outcomes. */
-export function createForYouIntentDispatcher(
-  handlers: ForYouIntentHandlers,
-): (intent: ForYouIntent) => void {
+export function createPodsIntentDispatcher(
+  handlers: PodsIntentHandlers,
+): (intent: PodsIntent) => void {
   return (intent) => handlers[intent]();
 }

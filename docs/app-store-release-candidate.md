@@ -2,7 +2,7 @@
 
 ## Declared product position
 
-- Product: **Wahb**, a public, audio-first Arabic discovery app for For You
+- Product: **Wahb**, a public, audio-first Arabic discovery app for Pods
   media and live News stories.
 - Initial App Store availability: **Public Distribution, Saudi Arabia only**.
   Do not select all regions or future regions at launch.

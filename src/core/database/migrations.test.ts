@@ -5,7 +5,7 @@ import { migrations } from './migrations';
 describe('database migrations', () => {
   it('are ordered and establish the operational tables', () => {
     expect(migrations.map(({ version }) => version)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
     ]);
     expect(migrations[0]?.statements).toContain(
       'CREATE TABLE IF NOT EXISTS feed_sessions',
@@ -79,5 +79,10 @@ describe('database migrations', () => {
 
   it('can park account work while credentials are being restored', () => {
     expect(migrations[12]?.statements).toContain("'auth_blocked'");
+  });
+
+  it('upgrades the replaceable local media cache to the Pods feed type', () => {
+    expect(migrations[13]?.statements).toContain('DROP TABLE feed_sessions');
+    expect(migrations[13]?.statements).toContain("('pods', 'news')");
   });
 });

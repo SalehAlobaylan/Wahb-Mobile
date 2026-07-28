@@ -414,7 +414,7 @@ export function NewsSlidePage({
           <View style={[styles.featuredActions, isRTL && styles.rowRtl]}>
             <Pressable
               accessibilityLabel={
-                featuredLiked ? t('foryou.unlike') : t('foryou.like')
+                featuredLiked ? t('pods.unlike') : t('pods.like')
               }
               accessibilityRole="button"
               accessibilityState={{ selected: featuredLiked }}
@@ -440,8 +440,8 @@ export function NewsSlidePage({
             <Pressable
               accessibilityLabel={
                 featuredBookmarked
-                  ? t('foryou.removeBookmark')
-                  : t('foryou.bookmark')
+                  ? t('pods.removeBookmark')
+                  : t('pods.bookmark')
               }
               accessibilityRole="button"
               accessibilityState={{ selected: featuredBookmarked }}
@@ -457,7 +457,7 @@ export function NewsSlidePage({
               />
             </Pressable>
             <Pressable
-              accessibilityLabel={t('foryou.share')}
+              accessibilityLabel={t('pods.share')}
               accessibilityRole="button"
               onPress={() => void shareStory(slide.featured)}
               style={styles.featuredAction}
@@ -606,7 +606,7 @@ export function NewsSlidePage({
                   >
                     <Pressable
                       accessibilityLabel={
-                        liked ? t('foryou.unlike') : t('foryou.like')
+                        liked ? t('pods.unlike') : t('pods.like')
                       }
                       accessibilityRole="button"
                       accessibilityState={{ selected: liked }}
@@ -636,8 +636,8 @@ export function NewsSlidePage({
                     <Pressable
                       accessibilityLabel={
                         bookmarked
-                          ? t('foryou.removeBookmark')
-                          : t('foryou.bookmark')
+                          ? t('pods.removeBookmark')
+                          : t('pods.bookmark')
                       }
                       accessibilityRole="button"
                       accessibilityState={{ selected: bookmarked }}

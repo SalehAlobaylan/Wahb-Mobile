@@ -22,7 +22,7 @@ export const playbackSourceSchema = z
   })
   .readonly();
 
-export const forYouItemSchema = z
+export const podsItemSchema = z
   .object({
     id: z.uuid(),
     type: z.enum(['VIDEO', 'PODCAST']),
@@ -74,7 +74,7 @@ export const forYouItemSchema = z
     },
   }));
 
-export const forYouFeedResponseSchema = z
+export const podsFeedResponseSchema = z
   .object({
     cursor: z
       .string()
@@ -86,7 +86,7 @@ export const forYouFeedResponseSchema = z
   })
   .passthrough()
   .transform(({ items, ...response }) => {
-    const parsedItems = items.map((item) => forYouItemSchema.safeParse(item));
+    const parsedItems = items.map((item) => podsItemSchema.safeParse(item));
     const validItems = parsedItems
       .filter(
         (item): item is Extract<typeof item, { success: true }> => item.success,
@@ -100,7 +100,7 @@ export const forYouFeedResponseSchema = z
     };
   });
 
-export const forYouSessionResponseSchema = z
+export const podsSessionResponseSchema = z
   .object({
     session_id: z.uuid(),
     expires_at: z.string().datetime(),
@@ -108,7 +108,7 @@ export const forYouSessionResponseSchema = z
   })
   .passthrough()
   .transform((response) => {
-    const page = forYouFeedResponseSchema.parse(response);
+    const page = podsFeedResponseSchema.parse(response);
     return {
       ...page,
       serverSessionId: response.session_id,
@@ -116,7 +116,7 @@ export const forYouSessionResponseSchema = z
     };
   });
 
-export const forYouSessionFreshnessResponseSchema = z
+export const podsSessionFreshnessResponseSchema = z
   .object({ has_new_content: z.boolean() })
   .passthrough()
   .transform((response) => ({ hasNewContent: response.has_new_content }));
@@ -506,11 +506,11 @@ export const transcriptionRequestResponseSchema = z
 
 export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
-export type ForYouItem = z.infer<typeof forYouItemSchema>;
-export type ForYouFeedResponse = z.infer<typeof forYouFeedResponseSchema>;
-export type ForYouSessionResponse = z.infer<typeof forYouSessionResponseSchema>;
-export type ForYouSessionFreshnessResponse = z.infer<
-  typeof forYouSessionFreshnessResponseSchema
+export type PodsItem = z.infer<typeof podsItemSchema>;
+export type PodsFeedResponse = z.infer<typeof podsFeedResponseSchema>;
+export type PodsSessionResponse = z.infer<typeof podsSessionResponseSchema>;
+export type PodsSessionFreshnessResponse = z.infer<
+  typeof podsSessionFreshnessResponseSchema
 >;
 export type NewsFeedResponse = z.infer<typeof newsFeedResponseSchema>;
 export type ArticleContent = z.infer<typeof articleContentResponseSchema>;

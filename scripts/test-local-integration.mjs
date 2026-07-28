@@ -59,17 +59,17 @@ async function getJson(name, url, expectedKeys) {
 }
 
 const installationId = crypto.randomUUID();
-const forYou = await getJson(
-  'CMS anonymous For You feed',
+const pods = await getJson(
+  'CMS anonymous Pods feed',
   new URL(
-    `/api/v1/feed/foryou?limit=1&session_id=${encodeURIComponent(installationId)}`,
+    `/api/v1/feed/pods?limit=1&session_id=${encodeURIComponent(installationId)}`,
     cmsUrl,
   ),
   ['items', 'caught_up'],
 );
-if (!Array.isArray(forYou.items) || typeof forYou.caught_up !== 'boolean') {
+if (!Array.isArray(pods.items) || typeof pods.caught_up !== 'boolean') {
   throw new Error(
-    'CMS anonymous For You feed violates the mobile response contract.',
+    'CMS anonymous Pods feed violates the mobile response contract.',
   );
 }
 

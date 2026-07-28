@@ -528,7 +528,7 @@ function GuestProfile() {
             [Heart, 'profile.tabs.likes'],
             [Bookmark, 'profile.tabs.saved'],
             [Clock3, 'profile.tabs.history'],
-            [Sparkles, 'foryou.feedLabel'],
+            [Sparkles, 'pods.feedLabel'],
           ].map(([Icon, key]) => {
             const ItemIcon = Icon as typeof Heart;
             return (
