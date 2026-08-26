@@ -7,11 +7,15 @@ import {
 export type PreparationCandidate = {
   id: string;
   sourceUrl: string;
+  sourceType?: 'hls' | 'mp4' | 'audio';
 };
 
 export type MediaPreparationTransport = {
   /** Performs a bounded source metadata probe, never a media-body download. */
-  probeSource(url: string, signal: AbortSignal): Promise<void>;
+  probeSource(
+    candidate: PreparationCandidate,
+    signal: AbortSignal,
+  ): Promise<void>;
 };
 
 export type MediaPreparationController = {
@@ -52,7 +56,7 @@ export function createMediaPreparationController(
         );
       for (const candidate of byIndex) {
         void transport
-          .probeSource(candidate.sourceUrl, abort.signal)
+          .probeSource(candidate, abort.signal)
           .catch(() => undefined);
       }
       return plan;
@@ -62,7 +66,30 @@ export function createMediaPreparationController(
 }
 
 export const headPreparationTransport: MediaPreparationTransport = {
-  async probeSource(url, signal) {
-    await fetch(url, { method: 'HEAD', signal });
+  async probeSource(candidate, signal) {
+    // Signed CDN URLs do not reliably retain an extension. The CMS-verified
+    // rendition type is authoritative for selecting the bounded probe.
+    if (candidate.sourceType === 'hls') {
+      const response = await fetch(candidate.sourceUrl, {
+        method: 'GET',
+        signal,
+        headers: { Range: 'bytes=0-16384' },
+      });
+      if (!response.ok) {
+        throw new Error(`playlist preparation failed: ${response.status}`);
+      }
+      const body = await response.text();
+      if (!body.startsWith('#EXTM3U') || body.length > 16_384) {
+        throw new Error('invalid bounded HLS master');
+      }
+      return;
+    }
+    const response = await fetch(candidate.sourceUrl, {
+      method: 'HEAD',
+      signal,
+    });
+    if (!response.ok) {
+      throw new Error(`media preparation failed: ${response.status}`);
+    }
   },
 };

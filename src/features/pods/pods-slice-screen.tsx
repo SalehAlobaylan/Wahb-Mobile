@@ -73,6 +73,12 @@ import {
   type ConsumptionState,
 } from '@/features/playback/consumption-classifier';
 import { usePlaybackController } from '@/features/playback/playback-provider';
+import { usePlaybackPreferences } from '@/features/playback/playback-preferences-provider';
+import {
+  playbackSourceForSelection,
+  selectDeliveryRendition,
+} from '@/features/playback/delivery-selector';
+import { useAdaptiveMediaSignals } from '@/features/playback/adaptive-media-signals';
 import { useMediaPreparation } from '@/features/playback/use-media-preparation';
 import { type PlaybackItem } from '@/features/playback/playback-model';
 
@@ -121,6 +127,8 @@ export function PodsSliceScreen() {
     checkForFreshness,
   } = usePodsSession(duration);
   const playback = usePlaybackController();
+  const { preferences: playbackPreferences } = usePlaybackPreferences();
+  const adaptiveSignals = useAdaptiveMediaSignals();
   const startPlayback = playback.start;
   const autoplayEnabled = playback.autoplayEnabled;
   const {
@@ -169,6 +177,11 @@ export function PodsSliceScreen() {
   const feedScreenStartedAt = useRef<number | null>(null);
   const pagerHasInteracted = useRef(false);
   const playbackPulseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeDeliveryState = useRef<{
+    signature: string;
+    effectiveTier: 'data_saver' | 'standard' | 'high';
+    policySignature: string;
+  } | null>(null);
   const [pageHeight, setPageHeight] = useState(0);
   const [isTranscriptDragging, setIsTranscriptDragging] = useState(false);
   const [swipeCardsPerSecond, setSwipeCardsPerSecond] = useState(0);
@@ -193,19 +206,46 @@ export function PodsSliceScreen() {
       : (session?.activePosition ?? 0);
   const active = session?.items[position];
   const item = active?.item;
-  const activePlaybackItem = useMemo<PlaybackItem | null>(
+  const activeDeliverySelection = useMemo(
     () =>
       item
+        ? selectDeliveryRendition({
+            source: item.playback,
+            displayMode,
+            streamingQuality: playbackPreferences.streaming_quality,
+            audioQuality: playbackPreferences.audio_quality,
+            preferAudioWhenAvailable:
+              playbackPreferences.prefer_audio_when_available,
+            allowCellularHighQuality:
+              playbackPreferences.allow_cellular_high_quality,
+            network:
+              adaptiveSignals.network === 'wifi'
+                ? 'wifi'
+                : adaptiveSignals.network === 'cellular'
+                  ? 'cellular'
+                  : adaptiveSignals.network,
+            lowPowerMode: adaptiveSignals.lowPowerMode,
+            memoryPressure: adaptiveSignals.memoryPressure,
+          })
+        : null,
+    [item, displayMode, playbackPreferences, adaptiveSignals],
+  );
+  const activePlaybackItem = useMemo<PlaybackItem | null>(
+    () =>
+      item && activeDeliverySelection
         ? {
             id: item.id,
             contentType: item.type,
             title: item.title,
             ...(item.source_name ? { sourceName: item.source_name } : {}),
             ...(item.thumbnail_url ? { artworkUrl: item.thumbnail_url } : {}),
-            playback: item.playback,
+            playback: playbackSourceForSelection(
+              item.playback,
+              activeDeliverySelection,
+            ),
           }
         : null,
-    [item],
+    [activeDeliverySelection, item],
   );
   const sessionPlaybackItems = useMemo<PlaybackItem[]>(
     () =>
@@ -271,10 +311,11 @@ export function PodsSliceScreen() {
     mutationFn: (contentId: string) =>
       clients.cms.requestTranscription(contentId),
   });
+  const resetTranscriptionRequest = requestTranscription.reset;
 
   useEffect(() => {
-    requestTranscription.reset();
-  }, [item?.id]); // A generation response only belongs to its original item.
+    resetTranscriptionRequest();
+  }, [item?.id, resetTranscriptionRequest]); // A response belongs to one item.
 
   useEffect(() => {
     void Storage.getItem('pods-display-mode-v1').then((value) => {
@@ -625,6 +666,51 @@ export function PodsSliceScreen() {
     isOfflineSnapshot,
     playback,
     reducedMotion,
+  ]);
+
+  // A restrictive network/power change immediately transfers the active item
+  // through the provider's atomic pause → load → seek → restore sequence. A
+  // later upgrade is intentionally deferred to the next item by the selector.
+  useEffect(() => {
+    const signature = activePlaybackItem
+      ? `${activePlaybackItem.id}:${activePlaybackItem.playback.url}`
+      : null;
+    const effectiveTier = activeDeliverySelection?.effectiveTier;
+    const policySignature = `${displayMode}:${playbackPreferences.streaming_quality}:${playbackPreferences.audio_quality}:${playbackPreferences.prefer_audio_when_available}:${playbackPreferences.allow_cellular_high_quality}`;
+    const previous = activeDeliveryState.current;
+    if (signature && effectiveTier) {
+      activeDeliveryState.current = {
+        signature,
+        effectiveTier,
+        policySignature,
+      };
+    }
+    if (
+      !signature ||
+      !effectiveTier ||
+      !activePlaybackItem ||
+      !previous ||
+      previous.signature === signature ||
+      playback.item?.id !== activePlaybackItem?.id ||
+      playback.phase !== 'playing'
+    )
+      return;
+    const rank = { data_saver: 0, standard: 1, high: 2 } as const;
+    const explicitPreferenceChange =
+      previous.policySignature !== policySignature;
+    const isAutomaticDowngrade =
+      rank[effectiveTier] < rank[previous.effectiveTier];
+    if (!explicitPreferenceChange && !isAutomaticDowngrade) return;
+    void playback.start(activePlaybackItem, {
+      positionSeconds: playback.currentTimeSeconds,
+      autoplay: true,
+    });
+  }, [
+    activeDeliverySelection,
+    activePlaybackItem,
+    displayMode,
+    playback,
+    playbackPreferences,
   ]);
 
   const dispatchIntent = useCallback(
@@ -1264,15 +1350,11 @@ export function PodsSliceScreen() {
                 accessibilityLiveRegion="polite"
                 style={styles.playbackFailure}
               >
-                <Text style={styles.errorText}>
-                  {t('pods.connectToPlay')}
-                </Text>
+                <Text style={styles.errorText}>{t('pods.connectToPlay')}</Text>
               </View>
             ) : playback.error && isCurrent ? (
               <View style={styles.playbackFailure}>
-                <Text style={styles.errorText}>
-                  {t('pods.playbackError')}
-                </Text>
+                <Text style={styles.errorText}>{t('pods.playbackError')}</Text>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('pods.retry')}
@@ -1297,9 +1379,7 @@ export function PodsSliceScreen() {
 
             <View style={[styles.actionRail, styles.hiddenActionRail]}>
               <Pressable
-                accessibilityLabel={
-                  liked ? t('pods.unlike') : t('pods.like')
-                }
+                accessibilityLabel={liked ? t('pods.unlike') : t('pods.like')}
                 accessibilityRole="button"
                 accessibilityState={{ selected: liked }}
                 onPress={() => void toggleEngagement('like')}
@@ -1372,9 +1452,7 @@ export function PodsSliceScreen() {
           collapsedContent={
             <View style={styles.sheetActionRail}>
               <Pressable
-                accessibilityLabel={
-                  liked ? t('pods.unlike') : t('pods.like')
-                }
+                accessibilityLabel={liked ? t('pods.unlike') : t('pods.like')}
                 accessibilityRole="button"
                 onPress={() => void toggleEngagement('like')}
                 style={styles.sheetActionButton}
@@ -1506,8 +1584,9 @@ function PodsTranscriptMode({
   useEffect(() => {
     rowLayouts.current.clear();
     previousActiveIndex.current = null;
-    setFollowLive(true);
     onTranscriptDragChange(false);
+    const reset = setTimeout(() => setFollowLive(true), 0);
+    return () => clearTimeout(reset);
   }, [itemId, onTranscriptDragChange]);
 
   useEffect(() => {
@@ -1866,9 +1945,7 @@ function PodsFailure({
         {offline ? t('pods.coldOfflineTitle') : t('pods.unavailable')}
       </Text>
       <Text style={styles.failureText}>
-        {offline
-          ? t('pods.coldOfflineCopy')
-          : t('pods.unavailableDescription')}
+        {offline ? t('pods.coldOfflineCopy') : t('pods.unavailableDescription')}
       </Text>
       <Pressable
         accessibilityRole="button"

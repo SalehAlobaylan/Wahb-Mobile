@@ -34,7 +34,11 @@ export function useMediaPreparation({
         activeIndex,
         itemCount: items.length,
       },
-      items.map((item) => ({ id: item.id, sourceUrl: item.playback.url })),
+      items.map((item) => ({
+        id: item.id,
+        sourceUrl: item.playback.url,
+        sourceType: item.playback.type,
+      })),
     );
   }, [activeIndex, items, signals, swipeCardsPerSecond]);
 

@@ -14,6 +14,7 @@ const source = {
   fallbackType: 'mp4' as const,
   fallbackHasVideo: true,
   hasVideo: true,
+  activeRenditionGenerationId: 'a1fb9c7d-8361-43f3-8849-60f07a728967',
 };
 
 describe('remote playback source resolver', () => {
@@ -41,6 +42,10 @@ describe('remote playback source resolver', () => {
     ['wrong owner', { scope: 'user:b' }],
     ['expired', { expiresAt: '2020-01-01T00:00:00.000Z' }],
     ['remote file URL', { fileUrl: 'https://signed.example/file' }],
+    [
+      'from a stale generation',
+      { renditionGenerationId: '737e2848-c09f-44dc-9422-e2746872bf0f' },
+    ],
   ])('falls back to CMS when the local artifact is %s', (_reason, override) => {
     const candidates = resolveLocalFirstPlaybackSources(
       source,
@@ -61,6 +66,7 @@ describe('remote playback source resolver', () => {
             fileUrl: 'file:///cache/media-1.mp4',
             playbackType: 'mp4' as const,
             hasVideo: true,
+            renditionGenerationId: 'a1fb9c7d-8361-43f3-8849-60f07a728967',
             ...override,
           },
       new Date('2029-01-01T00:00:00.000Z'),
@@ -89,6 +95,7 @@ describe('remote playback source resolver', () => {
         fileUrl: 'file:///cache/media-1.mp4',
         playbackType: 'mp4',
         hasVideo: true,
+        renditionGenerationId: 'a1fb9c7d-8361-43f3-8849-60f07a728967',
       },
       new Date('2029-01-01T00:00:00.000Z'),
     );

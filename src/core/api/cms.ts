@@ -36,9 +36,14 @@ import {
   type ProfileStats,
   type TopicPickerResponse,
   type ModerationReason,
+  type ContentPlayback,
+  type PlaybackPreferences,
+  contentPlaybackResponseSchema,
+  playbackPreferencesSchema,
 } from './schemas';
 import type { Transport } from './transport';
 import { HttpError } from './errors';
+import { z } from 'zod';
 
 // Initial frozen sessions involve CMS ranking and can take longer than a
 // regular interaction request on a local development data set. Do not present
@@ -55,12 +60,37 @@ export type PodsPageRequest = {
 };
 
 export type CmsApi = {
+  getContentPlayback(
+    id: string,
+    etag?: string,
+    signal?: AbortSignal,
+  ): Promise<ContentPlayback | null>;
+  recordPlaybackHealth(request: PlaybackHealthRequest): Promise<void>;
+  getPlaybackPreferences(signal?: AbortSignal): Promise<PlaybackPreferences>;
+  updatePlaybackPreferences(
+    input: Partial<PlaybackPreferences>,
+  ): Promise<PlaybackPreferences>;
+  getDeliveryRepairHistory(): Promise<{ repairs: unknown[] }>;
+  getDeliveryDiagnostics(contentId: string): Promise<Record<string, unknown>>;
+  previewDeliveryRepair(contentId: string): Promise<Record<string, unknown>>;
+  requestDeliveryRepair(
+    contentId: string,
+    previewDigest: string,
+  ): Promise<Record<string, unknown>>;
+  rollbackDeliveryGeneration(generationId: string): Promise<void>;
+  getDeliveryPolicies(): Promise<{ data: DeliveryPolicySummary[] }>;
+  createDeliveryPolicy(
+    input: DeliveryPolicyMutation,
+  ): Promise<DeliveryPolicySummary>;
+  updateDeliveryPolicy(
+    policyId: string,
+    input: Partial<DeliveryPolicyMutation>,
+  ): Promise<DeliveryPolicySummary>;
+  setDeliveryPolicyActive(policyId: string, active: boolean): Promise<void>;
   getArticleContent(id: string, signal?: AbortSignal): Promise<ArticleContent>;
   getNewsPage(request: NewsPageRequest): Promise<NewsFeedResponse>;
   getPodsPage(request: PodsPageRequest): Promise<PodsFeedResponse>;
-  createPodsSession(
-    request: PodsSessionRequest,
-  ): Promise<PodsSessionResponse>;
+  createPodsSession(request: PodsSessionRequest): Promise<PodsSessionResponse>;
   getPodsSessionPage(
     request: PodsSessionPageRequest,
   ): Promise<PodsSessionResponse>;
@@ -95,6 +125,90 @@ export type CmsApi = {
   reportModeration(request: ModerationReportRequest): Promise<void>;
   blockAuthor(authorId: string): Promise<void>;
   unblockAuthor(authorId: string): Promise<void>;
+};
+
+export type DeliveryPolicySummary = {
+  id: string;
+  name: string;
+  media_kind: string;
+  rollout_state: string;
+  active: boolean;
+  primary_mode: string;
+  policy_digest?: string;
+  tenant_id?: string;
+  allow_hls: boolean;
+  generate_progressive_fallback: boolean;
+  variants: DeliveryPolicyVariant[];
+};
+
+export type DeliveryPolicyVariant = {
+  rendition_type: 'audio' | 'progressive' | 'hls';
+  quality_tier: 'data_saver' | 'standard' | 'high';
+  priority: number;
+  required: boolean;
+  enabled: boolean;
+};
+
+export type DeliveryPolicyMutation = {
+  name: string;
+  media_kind: 'audio' | 'video';
+  primary_mode: 'audio' | 'progressive' | 'hls';
+  rollout_state: 'shadow' | 'active' | 'paused';
+  allow_hls: boolean;
+  generate_progressive_fallback: boolean;
+  hls_segment_duration_sec: 6;
+  hls_segment_format: 'cmaf';
+  hls_min_variants: number;
+  variants: DeliveryPolicyVariant[];
+  short_form_delivery?: boolean;
+  allow_native_audio?: boolean;
+  allow_mp4_fallback?: boolean;
+  allow_passthrough?: boolean;
+  allow_remux?: boolean;
+  generate_audio_alternate?: boolean;
+  preserve_video?: boolean;
+  active?: boolean;
+  max_delivery_height?: number;
+  max_delivery_bitrate_kbps?: number;
+  cache_profile?: string;
+};
+
+const deliveryPolicyVariantSchema = z
+  .object({
+    rendition_type: z.enum(['audio', 'progressive', 'hls']),
+    quality_tier: z.enum(['data_saver', 'standard', 'high']),
+    priority: z.number().int(),
+    required: z.boolean(),
+    enabled: z.boolean(),
+  })
+  .passthrough();
+
+const deliveryPolicySummarySchema = z
+  .object({
+    id: z.uuid(),
+    name: z.string(),
+    media_kind: z.string(),
+    rollout_state: z.string(),
+    active: z.boolean(),
+    primary_mode: z.string(),
+    policy_digest: z.string().optional(),
+    tenant_id: z.string().optional(),
+    allow_hls: z.boolean().default(false),
+    generate_progressive_fallback: z.boolean().default(true),
+    variants: z.array(deliveryPolicyVariantSchema).default([]),
+  })
+  .passthrough();
+
+export type PlaybackHealthRequest = {
+  contentId: string;
+  renditionGenerationId?: string;
+  renditionId: string;
+  failureClass:
+    'load' | 'decode' | 'stall' | 'seek' | 'manifest' | 'fallback_exhausted';
+  platform: 'ios' | 'android';
+  appBuild: string;
+  networkClass: 'wifi' | 'cellular' | 'offline' | 'unknown' | 'expensive';
+  idempotencyKey: string;
 };
 
 export type NewsPageRequest = {
@@ -190,10 +304,147 @@ export type ModerationReportRequest = {
 
 export function createCmsApi(transport: Transport): CmsApi {
   return {
+    getContentPlayback(id, etag, signal) {
+      return transport
+        .request(
+          {
+            path: `/api/v1/content/${id}/playback`,
+            signal,
+            authenticated: true,
+            headers: etag ? { 'If-None-Match': etag } : undefined,
+          },
+          contentPlaybackResponseSchema,
+        )
+        .catch((error) => {
+          if (error instanceof HttpError && error.context.status === 304)
+            return null;
+          throw error;
+        });
+    },
+    async recordPlaybackHealth(request) {
+      await transport.request(
+        {
+          path: `/api/v1/content/${request.contentId}/playback-health`,
+          method: 'POST',
+          authenticated: true,
+          idempotencyKey: request.idempotencyKey,
+          body: {
+            rendition_generation_id: request.renditionGenerationId,
+            rendition_id: request.renditionId,
+            failure_class: request.failureClass,
+            platform: request.platform,
+            app_build: request.appBuild,
+            network_class: request.networkClass,
+          },
+        },
+        z.object({ status: z.string() }).passthrough(),
+      );
+    },
+    getPlaybackPreferences(signal) {
+      return transport.request(
+        { path: '/api/v1/preferences/playback', signal, authenticated: true },
+        playbackPreferencesSchema,
+      );
+    },
+    updatePlaybackPreferences(input) {
+      return transport.request(
+        {
+          path: '/api/v1/preferences/playback',
+          method: 'PUT',
+          body: input,
+          authenticated: true,
+        },
+        playbackPreferencesSchema,
+      );
+    },
     getArticleContent(id, signal) {
       return transport.request(
         { path: `/api/v1/content/${id}`, signal, authenticated: true },
         articleContentResponseSchema,
+      );
+    },
+    getDeliveryRepairHistory() {
+      return transport.request(
+        { path: '/admin/media/delivery/repairs', authenticated: true },
+        z.object({ repairs: z.array(z.unknown()) }).passthrough(),
+      );
+    },
+    getDeliveryDiagnostics(contentId) {
+      return transport.request(
+        {
+          path: `/admin/media/delivery/content/${contentId}/diagnostics`,
+          authenticated: true,
+        },
+        z.record(z.string(), z.unknown()),
+      );
+    },
+    previewDeliveryRepair(contentId) {
+      return transport.request(
+        {
+          path: `/admin/media/delivery/preview/${contentId}`,
+          authenticated: true,
+        },
+        z.record(z.string(), z.unknown()),
+      );
+    },
+    requestDeliveryRepair(contentId, previewDigest) {
+      return transport.request(
+        {
+          path: '/admin/media/delivery/repairs',
+          method: 'POST',
+          authenticated: true,
+          body: { content_item_id: contentId, preview_digest: previewDigest },
+        },
+        z.record(z.string(), z.unknown()),
+      );
+    },
+    async rollbackDeliveryGeneration(generationId) {
+      await transport.request(
+        {
+          path: `/admin/media/delivery/generations/${generationId}/rollback`,
+          method: 'POST',
+          authenticated: true,
+        },
+        z.object({}).passthrough(),
+      );
+    },
+    getDeliveryPolicies() {
+      return transport.request(
+        { path: '/admin/media/delivery/policies', authenticated: true },
+        z.object({ data: z.array(deliveryPolicySummarySchema) }).passthrough(),
+      );
+    },
+    createDeliveryPolicy(input) {
+      return transport.request(
+        {
+          path: '/admin/media/delivery/policies',
+          method: 'POST',
+          authenticated: true,
+          body: input,
+        },
+        deliveryPolicySummarySchema,
+      );
+    },
+    updateDeliveryPolicy(policyId, input) {
+      return transport.request(
+        {
+          path: `/admin/media/delivery/policies/${policyId}`,
+          method: 'PUT',
+          authenticated: true,
+          body: input,
+        },
+        deliveryPolicySummarySchema,
+      );
+    },
+    async setDeliveryPolicyActive(policyId, active) {
+      await transport.request(
+        {
+          path: `/admin/media/delivery/policies/${policyId}/active`,
+          method: 'PATCH',
+          authenticated: true,
+          body: { active },
+        },
+        z.object({ status: z.literal('updated') }).passthrough(),
       );
     },
     getNewsPage({ cursor, limit = 10, installationId, window, signal }) {

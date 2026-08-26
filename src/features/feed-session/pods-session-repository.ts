@@ -2,7 +2,11 @@ import * as Crypto from 'expo-crypto';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { ConsumptionClassification } from '@/features/playback/consumption-classifier';
 
-import type { PodsFeedResponse, PodsItem } from '@/core/api';
+import {
+  podsItemSchema,
+  type PodsFeedResponse,
+  type PodsItem,
+} from '@/core/api';
 import { tombstonedContentIds } from '@/core/database/tombstones';
 import { enqueueInteractionWithIds } from '@/core/outbox/outbox-repository';
 
@@ -23,6 +27,10 @@ type SessionItemRow = {
   snapshot_json: string;
   playback_position_ms: number;
 };
+
+function parseFrozenItem(snapshot: string): PodsItem {
+  return podsItemSchema.parse(JSON.parse(snapshot));
+}
 
 export type FrozenPodsSession = {
   id: string;
@@ -71,12 +79,12 @@ export async function loadRecoverablePodsSession(
     const tombstones = await tombstonedContentIds(
       db,
       rows
-        .map((row) => JSON.parse(row.snapshot_json) as PodsItem)
+        .map((row) => parseFrozenItem(row.snapshot_json))
         .map((item) => item.id),
     );
     const items = rows
       .map((row) => ({
-        item: JSON.parse(row.snapshot_json) as PodsItem,
+        item: parseFrozenItem(row.snapshot_json),
         playbackPositionMs: row.playback_position_ms,
       }))
       .filter(({ item }) => !tombstones.has(item.id));
@@ -141,12 +149,12 @@ export async function loadFreshPodsSession(
     const tombstones = await tombstonedContentIds(
       db,
       rows
-        .map((row) => JSON.parse(row.snapshot_json) as PodsItem)
+        .map((row) => parseFrozenItem(row.snapshot_json))
         .map((item) => item.id),
     );
     const items = rows
       .map((row) => ({
-        item: JSON.parse(row.snapshot_json) as PodsItem,
+        item: parseFrozenItem(row.snapshot_json),
         playbackPositionMs: row.playback_position_ms,
       }))
       .filter(({ item }) => !tombstones.has(item.id));

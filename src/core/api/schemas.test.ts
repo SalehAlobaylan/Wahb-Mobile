@@ -12,6 +12,7 @@ import {
   myContentResponseSchema,
   profileStatsResponseSchema,
   transcriptResponseSchema,
+  typedRenditionSchema,
 } from './schemas';
 
 const validItem = {
@@ -88,6 +89,99 @@ describe('Pods contract schema', () => {
     });
 
     expect(parsed.items).toHaveLength(1);
+    expect(parsed.quarantinedItemCount).toBe(1);
+  });
+
+  it('accepts correlated v3 playback and quarantines a stale generation', () => {
+    const generationId = 'a1fb9c7d-8361-43f3-8849-60f07a728967';
+    const v3 = {
+      ...validItem,
+      active_rendition_generation_id: generationId,
+      rendition_set_version: 3,
+      rendition_digest: 'a'.repeat(64),
+      delivery_class: 'visual_dependent',
+      media_renditions: [
+        {
+          schema_version: 3,
+          id: 'standard-hls',
+          role: 'hls_access_master',
+          type: 'hls',
+          url: validItem.playback_url,
+          quality_tier: 'standard',
+          manifest_id: '69ef6ff9-c408-44d2-8cca-e5dc622dbb13',
+          package_id: 'd1ff1fb1-b202-4e54-9cdb-8fe70facaf4c',
+          rendition_generation_id: generationId,
+          policy_digest: 'b'.repeat(64),
+          probe_digest: 'c'.repeat(64),
+          validation_digest: 'd'.repeat(64),
+        },
+      ],
+    };
+    const parsed = podsFeedResponseSchema.parse({
+      items: [v3, { ...v3, active_rendition_generation_id: validItem.id }],
+    });
+
+    expect(parsed.items).toHaveLength(1);
+    expect(parsed.items[0]?.playback.renditionSetVersion).toBe(3);
+    expect(parsed.quarantinedItemCount).toBe(1);
+  });
+
+  it('fails closed when v3 native audio exceeds its declared ceiling', () => {
+    const base = {
+      schema_version: 3,
+      id: 'native-audio-standard',
+      role: 'native_audio',
+      type: 'audio',
+      url: 'https://media.example.test/audio.m4a',
+      mime_type: 'audio/mp4',
+      container: 'm4a',
+      codec: 'aac',
+      quality_tier: 'standard',
+      manifest_id: '69ef6ff9-c408-44d2-8cca-e5dc622dbb13',
+      rendition_generation_id: 'a1fb9c7d-8361-43f3-8849-60f07a728967',
+      policy_digest: 'b'.repeat(64),
+      probe_digest: 'c'.repeat(64),
+    };
+    expect(
+      typedRenditionSchema.safeParse({ ...base, bitrate_kbps: 128 }).success,
+    ).toBe(true);
+    expect(
+      typedRenditionSchema.safeParse({ ...base, bitrate_kbps: 129 }).success,
+    ).toBe(false);
+  });
+
+  it('quarantines a v3 native-audio set without a Data Saver floor', () => {
+    const generationId = 'a1fb9c7d-8361-43f3-8849-60f07a728967';
+    const audio = {
+      schema_version: 3,
+      id: 'native-audio-standard',
+      role: 'native_audio',
+      type: 'audio',
+      url: 'https://media.example.test/audio.m4a',
+      mime_type: 'audio/mp4',
+      container: 'm4a',
+      codec: 'aac',
+      bitrate_kbps: 128,
+      quality_tier: 'standard',
+      manifest_id: '69ef6ff9-c408-44d2-8cca-e5dc622dbb13',
+      rendition_generation_id: generationId,
+      policy_digest: 'b'.repeat(64),
+      probe_digest: 'c'.repeat(64),
+      is_primary: true,
+    };
+    const item = {
+      ...validItem,
+      playback_url: audio.url,
+      playback_type: 'audio',
+      has_video: false,
+      active_rendition_generation_id: generationId,
+      rendition_set_version: 3,
+      rendition_digest: 'a'.repeat(64),
+      delivery_class: 'audio_only',
+      media_renditions: [audio],
+    };
+    const parsed = podsFeedResponseSchema.parse({ items: [item] });
+    expect(parsed.items).toHaveLength(0);
     expect(parsed.quarantinedItemCount).toBe(1);
   });
 

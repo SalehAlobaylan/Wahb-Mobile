@@ -61,6 +61,7 @@ describe('future download contracts', () => {
       fileUrl: 'file:///cache/a.mp4',
       playbackType: 'mp4' as const,
       hasVideo: true,
+      renditionGenerationId: 'a1fb9c7d-8361-43f3-8849-60f07a728967',
     };
     expect(isVerifiedLocalPlaybackArtifact(artifact, 'user:a')).toBe(true);
     expect(

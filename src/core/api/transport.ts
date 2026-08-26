@@ -22,6 +22,8 @@ export type RequestOptions = {
    * mobile outbox. Never derive this from content, an account, or a URL.
    */
   idempotencyKey?: string;
+  /** Additional non-sensitive protocol headers, such as If-None-Match. */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
   timeoutMs?: number;
 };
@@ -117,6 +119,11 @@ export function createTransport(options: TransportOptions): Transport {
 
       try {
         const headers = new Headers({ Accept: 'application/json' });
+        for (const [key, value] of Object.entries(
+          requestOptions.headers ?? {},
+        )) {
+          headers.set(key, value);
+        }
         if (requestOptions.body !== undefined) {
           headers.set('Content-Type', 'application/json');
         }

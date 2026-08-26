@@ -10,6 +10,101 @@ const absoluteHttpUrl = z.url().refine(
 
 export const playbackTypeSchema = z.enum(['hls', 'mp4', 'audio']);
 
+export const deliveryClassSchema = z.enum([
+  'audio_only',
+  'audio_first_visual',
+  'visual_dependent',
+]);
+
+export const typedRenditionSchema = z
+  .object({
+    schema_version: z.number().int().min(1).max(3).default(1),
+    id: z.string().min(1).max(128).optional(),
+    role: z.string().min(1).max(64).optional(),
+    type: playbackTypeSchema,
+    url: absoluteHttpUrl,
+    mime_type: z.string().min(1).max(128).optional(),
+    container: z.string().min(1).max(32).optional(),
+    codec: z.string().max(128).optional(),
+    codecs: z.string().max(256).optional(),
+    has_video: z.boolean().optional(),
+    adaptive: z.boolean().optional(),
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+    bitrate_kbps: z.number().int().positive().optional(),
+    quality_tier: z.enum(['data_saver', 'standard', 'high']).optional(),
+    manifest_id: z.uuid().optional(),
+    package_id: z.uuid().optional(),
+    rendition_generation_id: z.uuid().optional(),
+    fallback_rendition_id: z.string().max(128).optional(),
+    policy_digest: z.string().length(64).optional(),
+    probe_digest: z.string().length(64).optional(),
+    validation_digest: z.string().length(64).optional(),
+    is_primary: z.boolean().optional(),
+  })
+  .passthrough()
+  .superRefine((rendition, context) => {
+    if (rendition.schema_version < 3) return;
+    const required = [
+      ['id', rendition.id],
+      ['role', rendition.role],
+      ['quality_tier', rendition.quality_tier],
+      ['manifest_id', rendition.manifest_id],
+      ['rendition_generation_id', rendition.rendition_generation_id],
+      ['policy_digest', rendition.policy_digest],
+      ['probe_digest', rendition.probe_digest],
+    ] as const;
+    for (const [field, value] of required) {
+      if (!value)
+        context.addIssue({
+          code: 'custom',
+          path: [field],
+          message: `v3 rendition requires ${field}`,
+        });
+    }
+    if (
+      rendition.type === 'hls' &&
+      (!rendition.package_id || !rendition.validation_digest)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['validation_digest'],
+        message: 'v3 HLS rendition requires verified package correlation',
+      });
+    }
+    if (rendition.type === 'audio') {
+      const ceilings = { data_saver: 64, standard: 128, high: 192 } as const;
+      const tier = rendition.quality_tier;
+      const ceiling = tier ? ceilings[tier] : undefined;
+      if (
+        !rendition.bitrate_kbps ||
+        !ceiling ||
+        rendition.bitrate_kbps > ceiling
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['bitrate_kbps'],
+          message: 'v3 audio bitrate must fit its declared quality ceiling',
+        });
+      }
+      const legalAudio =
+        (rendition.mime_type === 'audio/mp4' &&
+          rendition.container === 'm4a' &&
+          rendition.codec === 'aac') ||
+        (rendition.mime_type === 'audio/mpeg' &&
+          rendition.container === 'mp3' &&
+          rendition.codec === 'mp3');
+      if (!legalAudio) {
+        context.addIssue({
+          code: 'custom',
+          path: ['mime_type'],
+          message:
+            'v3 audio requires a supported exact MIME/container/codec tuple',
+        });
+      }
+    }
+  });
+
 export const playbackSourceSchema = z
   .object({
     url: absoluteHttpUrl,
@@ -18,6 +113,11 @@ export const playbackSourceSchema = z
     fallbackType: playbackTypeSchema.optional(),
     fallbackHasVideo: z.boolean().optional(),
     renditionMetadata: z.unknown().optional(),
+    activeRenditionGenerationId: z.uuid().optional(),
+    renditionSetVersion: z.number().int().min(1).max(3).optional(),
+    renditionDigest: z.string().length(64).optional(),
+    deliveryClass: deliveryClassSchema.optional(),
+    renditions: z.array(typedRenditionSchema).optional(),
     hasVideo: z.boolean(),
   })
   .readonly();
@@ -32,7 +132,11 @@ export const podsItemSchema = z
     fallback_playback_url: absoluteHttpUrl.nullish(),
     fallback_playback_type: playbackTypeSchema.optional(),
     fallback_has_video: z.boolean().optional(),
-    media_renditions: z.unknown().optional(),
+    active_rendition_generation_id: z.uuid().optional(),
+    rendition_set_version: z.number().int().min(1).max(3).optional(),
+    rendition_digest: z.string().length(64).optional(),
+    delivery_class: deliveryClassSchema.optional(),
+    media_renditions: z.array(typedRenditionSchema).optional(),
     has_video: z.boolean(),
     thumbnail_url: absoluteHttpUrl.optional(),
     duration_sec: z.number().int().min(270).max(2_400),
@@ -53,6 +157,60 @@ export const podsItemSchema = z
     transcript_id: z.uuid().optional(),
   })
   .passthrough()
+  .superRefine((item, context) => {
+    if (item.rendition_set_version !== 3) return;
+    if (
+      !item.active_rendition_generation_id ||
+      !item.rendition_digest ||
+      !item.delivery_class ||
+      !item.media_renditions?.length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['rendition_set_version'],
+        message: 'v3 playback requires active generation metadata',
+      });
+      return;
+    }
+    if (
+      item.media_renditions.some(
+        (rendition) =>
+          rendition.schema_version !== 3 ||
+          rendition.rendition_generation_id !==
+            item.active_rendition_generation_id,
+      )
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['media_renditions'],
+        message: 'v3 renditions must belong to the active generation',
+      });
+    }
+    const audioTiers = item.media_renditions
+      .filter((rendition) => rendition.type === 'audio')
+      .map((rendition) => rendition.quality_tier);
+    if (
+      audioTiers.length > 0 &&
+      (!audioTiers.includes('data_saver') ||
+        new Set(audioTiers).size !== audioTiers.length)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['media_renditions'],
+        message: 'v3 native audio requires unique tiers and a Data Saver floor',
+      });
+    }
+    const active = item.media_renditions.find(
+      (rendition) => rendition.url === item.playback_url,
+    );
+    if (!active || active.type !== item.playback_type) {
+      context.addIssue({
+        code: 'custom',
+        path: ['playback_url'],
+        message: 'v3 playback must project an active typed rendition',
+      });
+    }
+  })
   .transform((item) => ({
     ...item,
     playback: {
@@ -70,6 +228,17 @@ export const podsItemSchema = z
       ...(item.media_renditions
         ? { renditionMetadata: item.media_renditions }
         : {}),
+      ...(item.active_rendition_generation_id
+        ? { activeRenditionGenerationId: item.active_rendition_generation_id }
+        : {}),
+      ...(item.rendition_set_version
+        ? { renditionSetVersion: item.rendition_set_version }
+        : {}),
+      ...(item.rendition_digest
+        ? { renditionDigest: item.rendition_digest }
+        : {}),
+      ...(item.delivery_class ? { deliveryClass: item.delivery_class } : {}),
+      ...(item.media_renditions ? { renditions: item.media_renditions } : {}),
       hasVideo: item.has_video,
     },
   }));
@@ -120,6 +289,54 @@ export const podsSessionFreshnessResponseSchema = z
   .object({ has_new_content: z.boolean() })
   .passthrough()
   .transform((response) => ({ hasNewContent: response.has_new_content }));
+
+export const contentPlaybackResponseSchema = z
+  .object({
+    content_item_id: z.uuid(),
+    active_rendition_generation_id: z.uuid(),
+    rendition_set_version: z.number().int().min(1).max(3),
+    rendition_digest: z.string().length(64),
+    delivery_class: deliveryClassSchema,
+    playback_url: absoluteHttpUrl.nullish(),
+    playback_type: playbackTypeSchema.optional(),
+    fallback_playback_url: absoluteHttpUrl.nullish(),
+    has_video: z.boolean().optional().default(false),
+    media_renditions: z.array(typedRenditionSchema).min(1),
+  })
+  .passthrough()
+  .transform((value) => ({
+    ...value,
+    playback: {
+      url:
+        value.playback_url ??
+        value.media_renditions.find((rendition) => rendition.is_primary)?.url ??
+        value.media_renditions[0]!.url,
+      type:
+        value.playback_type ??
+        value.media_renditions.find((rendition) => rendition.is_primary)
+          ?.type ??
+        value.media_renditions[0]!.type,
+      hasVideo: value.has_video,
+      activeRenditionGenerationId: value.active_rendition_generation_id,
+      renditionSetVersion: value.rendition_set_version,
+      renditionDigest: value.rendition_digest,
+      deliveryClass: value.delivery_class,
+      renditions: value.media_renditions,
+    },
+  }));
+
+export const playbackPreferencesSchema = z
+  .object({
+    audio_quality: z
+      .enum(['data_saver', 'standard', 'high'])
+      .default('standard'),
+    streaming_quality: z
+      .enum(['auto', 'data_saver', 'standard', 'high'])
+      .default('auto'),
+    allow_cellular_high_quality: z.boolean().default(false),
+    prefer_audio_when_available: z.boolean().default(true),
+  })
+  .passthrough();
 
 const newsStoryMemberSchema = z
   .object({
@@ -224,6 +441,18 @@ export const authTokenPairSchema = z
     access_token: z.string().min(20),
     refresh_token: z.string().uuid(),
     expires_in: z.number().int().positive(),
+  })
+  .passthrough();
+
+export const iamRolesSchema = z
+  .object({
+    user_id: z.uuid(),
+    email: z.string().email(),
+    tenant_id: z.string().min(1),
+    role: z.string().optional(),
+    roles: z.array(z.string()).default([]),
+    permissions: z.array(z.string()).default([]),
+    is_admin: z.boolean().optional().default(false),
   })
   .passthrough();
 
@@ -506,6 +735,9 @@ export const transcriptionRequestResponseSchema = z
 
 export type PlaybackType = z.infer<typeof playbackTypeSchema>;
 export type PlaybackSource = z.infer<typeof playbackSourceSchema>;
+export type ContentPlayback = z.infer<typeof contentPlaybackResponseSchema>;
+export type PlaybackPreferences = z.infer<typeof playbackPreferencesSchema>;
+export type TypedRendition = z.infer<typeof typedRenditionSchema>;
 export type PodsItem = z.infer<typeof podsItemSchema>;
 export type PodsFeedResponse = z.infer<typeof podsFeedResponseSchema>;
 export type PodsSessionResponse = z.infer<typeof podsSessionResponseSchema>;
@@ -533,4 +765,5 @@ export type HistoryItem = HistoryResponse['items'][number];
 export type TopicPickerResponse = z.infer<typeof topicPickerResponseSchema>;
 export type PreferencesResponse = z.infer<typeof preferencesResponseSchema>;
 export type IamProfile = z.infer<typeof iamProfileSchema>;
+export type IamRoles = z.infer<typeof iamRolesSchema>;
 export type ModerationReason = z.infer<typeof moderationReasonSchema>;

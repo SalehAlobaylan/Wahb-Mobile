@@ -37,6 +37,7 @@ import { ConnectivityProvider } from '@/core/network/connectivity-provider';
 import { AuthProvider } from '@/features/auth/auth-provider';
 import { LinkDispatcherProvider } from '@/features/auth/link-dispatcher-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
+import { PlaybackPreferencesProvider } from '@/features/playback/playback-preferences-provider';
 import { NonFeedNowPlaying } from '@/features/playback/non-feed-now-playing';
 
 void SplashScreen.preventAutoHideAsync();
@@ -98,32 +99,35 @@ export default function RootLayout() {
               >
                 <AuthProvider>
                   <OutboxProvider>
-                    <PlaybackProvider>
-                      <StatusBar style="auto" />
-                      <Stack screenOptions={{ headerShown: false }}>
-                        <Stack.Screen
-                          name="(feeds)"
-                          options={{ animation: 'none' }}
-                        />
-                        <Stack.Screen name="search" />
-                        <Stack.Screen name="article/[id]" />
-                        <Stack.Screen name="sign-in" />
-                        <Stack.Screen name="register" />
-                        <Stack.Screen name="check-email" />
-                        <Stack.Screen name="forgot-password" />
-                        <Stack.Screen name="reset-password" />
-                        <Stack.Screen name="verify-email" />
-                        <Stack.Screen name="account" />
-                        <Stack.Screen name="profile" />
-                        <Stack.Screen name="interests" />
-                        <Stack.Screen name="history" />
-                        <Stack.Screen name="settings" />
-                        <Stack.Screen name="settings/[panel]" />
-                        <Stack.Screen name="delete-account" />
-                      </Stack>
-                      <LinkDispatcherProvider />
-                      <NonFeedNowPlaying />
-                    </PlaybackProvider>
+                    <PlaybackPreferencesProvider>
+                      <PlaybackProvider>
+                        <StatusBar style="auto" />
+                        <Stack screenOptions={{ headerShown: false }}>
+                          <Stack.Screen
+                            name="(feeds)"
+                            options={{ animation: 'none' }}
+                          />
+                          <Stack.Screen name="search" />
+                          <Stack.Screen name="article/[id]" />
+                          <Stack.Screen name="sign-in" />
+                          <Stack.Screen name="register" />
+                          <Stack.Screen name="check-email" />
+                          <Stack.Screen name="forgot-password" />
+                          <Stack.Screen name="reset-password" />
+                          <Stack.Screen name="verify-email" />
+                          <Stack.Screen name="account" />
+                          <Stack.Screen name="profile" />
+                          <Stack.Screen name="interests" />
+                          <Stack.Screen name="history" />
+                          <Stack.Screen name="settings" />
+                          <Stack.Screen name="settings/[panel]" />
+                          <Stack.Screen name="delivery-operations" />
+                          <Stack.Screen name="delete-account" />
+                        </Stack>
+                        <LinkDispatcherProvider />
+                        <NonFeedNowPlaying />
+                      </PlaybackProvider>
+                    </PlaybackPreferencesProvider>
                   </OutboxProvider>
                 </AuthProvider>
               </SQLiteProvider>

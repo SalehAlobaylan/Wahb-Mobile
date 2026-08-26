@@ -38,8 +38,12 @@ import { layoutMetrics, radii, spacing, typeScale } from '@/design/tokens';
 import { useWahbTheme } from '@/design/theme';
 import { useWahbTypography } from '@/design/typography';
 import { useAuth } from '@/features/auth/auth-provider';
-import { playbackRates, type PlaybackRateClass } from '@/features/playback/playback-model';
+import {
+  playbackRates,
+  type PlaybackRateClass,
+} from '@/features/playback/playback-model';
 import { usePlaybackController } from '@/features/playback/playback-provider';
+import { usePlaybackPreferences } from '@/features/playback/playback-preferences-provider';
 
 import {
   defaultExperiencePreferences,
@@ -53,7 +57,11 @@ import {
   writeLanguagePreferences,
 } from './language-preferences';
 import { type SettingsPanel } from './settings-panel';
-export { parseSettingsPanel, settingsPanels, type SettingsPanel } from './settings-panel';
+export {
+  parseSettingsPanel,
+  settingsPanels,
+  type SettingsPanel,
+} from './settings-panel';
 
 const legalBaseUrl = 'https://wahb.salehspace.dev';
 
@@ -137,6 +145,16 @@ function SettingsHome() {
     enabled: Boolean(subject),
     queryFn: () => clients.iam.getProfile(),
   });
+  const roles = useQuery({
+    queryKey: ['iam-roles', subject?.id],
+    enabled: Boolean(subject),
+    queryFn: () => clients.iam.getRoles(),
+  });
+  const canReadDelivery =
+    roles.data?.is_admin ||
+    roles.data?.permissions.includes('content:*') ||
+    roles.data?.permissions.includes('content:read') ||
+    roles.data?.permissions.includes('*:*');
   const displayName = profile.data?.username || subject?.email?.split('@')[0];
 
   return (
@@ -180,7 +198,10 @@ function SettingsHome() {
             <Text
               style={[
                 styles.teaserMeta,
-                { color: subject ? theme.accent : theme.mutedForeground, fontFamily: font('bold') },
+                {
+                  color: subject ? theme.accent : theme.mutedForeground,
+                  fontFamily: font('bold'),
+                },
               ]}
             >
               {subject ? t('settings.member') : t('settings.signInCopy')}
@@ -207,7 +228,18 @@ function SettingsHome() {
             label={t('settings.playback')}
             onPress={() => router.push(settingsPanelHref('playback'))}
           />
-          <SettingsRow icon={Download} label={t('settings.downloads')} disabled />
+          <SettingsRow
+            icon={Download}
+            label={t('settings.downloads')}
+            disabled
+          />
+          {canReadDelivery ? (
+            <SettingsRow
+              icon={Shield}
+              label={t('settings.deliveryOperations')}
+              onPress={() => router.push('/delivery-operations' as Href)}
+            />
+          ) : null}
         </SettingsGroup>
         <SettingsGroup title={t('settings.sections.preferences')}>
           <SettingsRow
@@ -220,7 +252,11 @@ function SettingsHome() {
             label={t('settings.uiLanguage')}
             onPress={() => router.push(settingsPanelHref('language'))}
           />
-          <SettingsRow icon={Bell} label={t('settings.notifications')} disabled />
+          <SettingsRow
+            icon={Bell}
+            label={t('settings.notifications')}
+            disabled
+          />
         </SettingsGroup>
         <SettingsGroup title={t('settings.legal')}>
           <SettingsRow
@@ -252,16 +288,55 @@ function LanguagePanel() {
   return (
     <PanelScroll>
       <PanelSection title={t('settings.uiLanguage')}>
-        <Choice value="ar" selected={language.uiLanguage} label={t('settings.arabic')} onPress={() => updateLanguage({ uiLanguage: 'ar' })} />
-        <Choice value="en" selected={language.uiLanguage} label={t('settings.english')} onPress={() => updateLanguage({ uiLanguage: 'en' })} />
+        <Choice
+          value="ar"
+          selected={language.uiLanguage}
+          label={t('settings.arabic')}
+          onPress={() => updateLanguage({ uiLanguage: 'ar' })}
+        />
+        <Choice
+          value="en"
+          selected={language.uiLanguage}
+          label={t('settings.english')}
+          onPress={() => updateLanguage({ uiLanguage: 'en' })}
+        />
       </PanelSection>
-      <Text style={[styles.note, { color: theme.mutedForeground, fontFamily: font('body') }]}>{t('settings.rtlNote')}</Text>
+      <Text
+        style={[
+          styles.note,
+          { color: theme.mutedForeground, fontFamily: font('body') },
+        ]}
+      >
+        {t('settings.rtlNote')}
+      </Text>
       <PanelSection title={t('settings.contentLanguage')}>
-        <Choice value="ar" selected={language.contentLanguage} label={t('settings.arabic')} onPress={() => updateLanguage({ contentLanguage: 'ar' })} />
-        <Choice value="en" selected={language.contentLanguage} label={t('settings.english')} onPress={() => updateLanguage({ contentLanguage: 'en' })} />
-        <Choice value="both" selected={language.contentLanguage} label={t('settings.both')} onPress={() => updateLanguage({ contentLanguage: 'both' })} />
+        <Choice
+          value="ar"
+          selected={language.contentLanguage}
+          label={t('settings.arabic')}
+          onPress={() => updateLanguage({ contentLanguage: 'ar' })}
+        />
+        <Choice
+          value="en"
+          selected={language.contentLanguage}
+          label={t('settings.english')}
+          onPress={() => updateLanguage({ contentLanguage: 'en' })}
+        />
+        <Choice
+          value="both"
+          selected={language.contentLanguage}
+          label={t('settings.both')}
+          onPress={() => updateLanguage({ contentLanguage: 'both' })}
+        />
       </PanelSection>
-      <Text style={[styles.note, { color: theme.mutedForeground, fontFamily: font('body') }]}>{t('settings.contentNote')}</Text>
+      <Text
+        style={[
+          styles.note,
+          { color: theme.mutedForeground, fontFamily: font('body') },
+        ]}
+      >
+        {t('settings.contentNote')}
+      </Text>
     </PanelScroll>
   );
 }
@@ -272,9 +347,24 @@ function AppearancePanel() {
   return (
     <PanelScroll>
       <PanelSection title={t('settings.appearance')}>
-        <Choice value="system" selected={experience.theme} label={t('settings.themeSystem')} onPress={() => updateExperience({ theme: 'system' })} />
-        <Choice value="light" selected={experience.theme} label={t('settings.themeLight')} onPress={() => updateExperience({ theme: 'light' })} />
-        <Choice value="dark" selected={experience.theme} label={t('settings.themeDark')} onPress={() => updateExperience({ theme: 'dark' })} />
+        <Choice
+          value="system"
+          selected={experience.theme}
+          label={t('settings.themeSystem')}
+          onPress={() => updateExperience({ theme: 'system' })}
+        />
+        <Choice
+          value="light"
+          selected={experience.theme}
+          label={t('settings.themeLight')}
+          onPress={() => updateExperience({ theme: 'light' })}
+        />
+        <Choice
+          value="dark"
+          selected={experience.theme}
+          label={t('settings.themeDark')}
+          onPress={() => updateExperience({ theme: 'dark' })}
+        />
       </PanelSection>
     </PanelScroll>
   );
@@ -283,16 +373,82 @@ function AppearancePanel() {
 function PlaybackPanel() {
   const { t } = useTranslation();
   const { experience, playback, updateExperience } = useSettingsPreferences();
+  const { preferences, update } = usePlaybackPreferences();
   return (
     <PanelScroll>
       <PanelSection title={t('settings.playback')}>
-        <ToggleRow label={t('settings.autoplay')} copy={t('settings.autoplayCopy')} value={experience.autoplayEnabled} onChange={(value) => updateExperience({ autoplayEnabled: value })} />
-        <ToggleRow label={t('settings.haptics')} copy={t('settings.hapticsCopy')} value={experience.hapticsEnabled} onChange={(value) => updateExperience({ hapticsEnabled: value })} />
+        <Choice
+          value="auto"
+          selected={preferences.streaming_quality}
+          label={t('settings.autoQuality')}
+          onPress={() => void update({ streaming_quality: 'auto' })}
+        />
+        <Choice
+          value="data_saver"
+          selected={preferences.streaming_quality}
+          label={t('settings.dataSaver')}
+          onPress={() => void update({ streaming_quality: 'data_saver' })}
+        />
+        <Choice
+          value="standard"
+          selected={preferences.streaming_quality}
+          label={t('settings.standardQuality')}
+          onPress={() => void update({ streaming_quality: 'standard' })}
+        />
+        <Choice
+          value="high"
+          selected={preferences.streaming_quality}
+          label={t('settings.highQuality')}
+          onPress={() => void update({ streaming_quality: 'high' })}
+        />
+        <ToggleRow
+          label={t('settings.preferAudio')}
+          copy={t('settings.preferAudioCopy')}
+          value={preferences.prefer_audio_when_available}
+          onChange={(value) =>
+            void update({ prefer_audio_when_available: value })
+          }
+        />
+        <ToggleRow
+          label={t('settings.cellularHighQuality')}
+          copy={t('settings.cellularHighQualityCopy')}
+          value={preferences.allow_cellular_high_quality}
+          onChange={(value) =>
+            void update({ allow_cellular_high_quality: value })
+          }
+        />
+        <ToggleRow
+          label={t('settings.autoplay')}
+          copy={t('settings.autoplayCopy')}
+          value={experience.autoplayEnabled}
+          onChange={(value) => updateExperience({ autoplayEnabled: value })}
+        />
+        <ToggleRow
+          label={t('settings.haptics')}
+          copy={t('settings.hapticsCopy')}
+          value={experience.hapticsEnabled}
+          onChange={(value) => updateExperience({ hapticsEnabled: value })}
+        />
       </PanelSection>
       <PanelSection title={t('settings.speed')}>
-        <RateRow label={t('settings.video')} rateClass="video" value={playback.rateDefaults.video} onSelect={playback.setDefaultRate} />
-        <RateRow label={t('settings.podcast')} rateClass="podcast" value={playback.rateDefaults.podcast} onSelect={playback.setDefaultRate} />
-        <RateRow label={t('settings.audioChapter')} rateClass="audio_chapter" value={playback.rateDefaults.audio_chapter} onSelect={playback.setDefaultRate} />
+        <RateRow
+          label={t('settings.video')}
+          rateClass="video"
+          value={playback.rateDefaults.video}
+          onSelect={playback.setDefaultRate}
+        />
+        <RateRow
+          label={t('settings.podcast')}
+          rateClass="podcast"
+          value={playback.rateDefaults.podcast}
+          onSelect={playback.setDefaultRate}
+        />
+        <RateRow
+          label={t('settings.audioChapter')}
+          rateClass="audio_chapter"
+          value={playback.rateDefaults.audio_chapter}
+          onSelect={playback.setDefaultRate}
+        />
       </PanelSection>
     </PanelScroll>
   );
@@ -318,7 +474,12 @@ function LegalPanel() {
             icon={label === 'support' ? Globe2 : FileText}
             label={t(`settings.${label}`)}
             external
-            onPress={() => void WebBrowser.openBrowserAsync(url, { enableBarCollapsing: true, showTitle: true })}
+            onPress={() =>
+              void WebBrowser.openBrowserAsync(url, {
+                enableBarCollapsing: true,
+                showTitle: true,
+              })
+            }
           />
         ))}
       </PanelSection>
@@ -334,28 +495,58 @@ function SecurityPanel() {
   return (
     <PanelScroll>
       <PanelSection title={t('settings.security')}>
-        <SettingsRow icon={UserRound} label={t('account.title')} onPress={() => router.push('/account')} />
+        <SettingsRow
+          icon={UserRound}
+          label={t('account.title')}
+          onPress={() => router.push('/account')}
+        />
         {auth.subject ? (
           <>
             <Pressable
               accessibilityRole="button"
               onPress={() => void auth.logout().then(() => router.replace('/'))}
-              style={({ pressed }) => [styles.outlineAction, { borderColor: theme.accent }, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.outlineAction,
+                { borderColor: theme.accent },
+                pressed && styles.pressed,
+              ]}
             >
               <LogOut color={theme.accent} size={18} />
-              <Text style={[styles.outlineActionText, { color: theme.accent, fontFamily: font('bold') }]}>{t('account.signOut')}</Text>
+              <Text
+                style={[
+                  styles.outlineActionText,
+                  { color: theme.accent, fontFamily: font('bold') },
+                ]}
+              >
+                {t('account.signOut')}
+              </Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"
               onPress={() => router.push('/delete-account')}
-              style={({ pressed }) => [styles.deleteAction, { borderColor: theme.accent }, pressed && styles.pressed]}
+              style={({ pressed }) => [
+                styles.deleteAction,
+                { borderColor: theme.accent },
+                pressed && styles.pressed,
+              ]}
             >
               <Trash2 color={theme.accent} size={18} />
-              <Text style={[styles.outlineActionText, { color: theme.accent, fontFamily: font('bold') }]}>{t('account.deleteAccount')}</Text>
+              <Text
+                style={[
+                  styles.outlineActionText,
+                  { color: theme.accent, fontFamily: font('bold') },
+                ]}
+              >
+                {t('account.deleteAccount')}
+              </Text>
             </Pressable>
           </>
         ) : (
-          <SettingsRow icon={UserRound} label={t('settings.signIn')} onPress={() => router.push('/sign-in')} />
+          <SettingsRow
+            icon={UserRound}
+            label={t('settings.signIn')}
+            onPress={() => router.push('/sign-in')}
+          />
         )}
       </PanelSection>
     </PanelScroll>
@@ -365,30 +556,64 @@ function SecurityPanel() {
 function PanelScroll({ children }: { children: ReactNode }) {
   const { theme } = useWahbTheme();
   return (
-    <ScrollView contentContainerStyle={[styles.content, { backgroundColor: theme.background }]} contentInsetAdjustmentBehavior="automatic">
+    <ScrollView
+      contentContainerStyle={[
+        styles.content,
+        { backgroundColor: theme.background },
+      ]}
+      contentInsetAdjustmentBehavior="automatic"
+    >
       {children}
     </ScrollView>
   );
 }
 
-function SettingsGroup({ children, title }: { children: ReactNode; title: string }) {
+function SettingsGroup({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
   const { theme } = useWahbTheme();
   return (
     <View style={styles.group}>
       <PanelLabel>{title}</PanelLabel>
-      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>{children}</View>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: theme.card, borderColor: theme.border },
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
 
-function PanelSection({ children, title }: { children: ReactNode; title: string }) {
+function PanelSection({
+  children,
+  title,
+}: {
+  children: ReactNode;
+  title: string;
+}) {
   return <SettingsGroup title={title}>{children}</SettingsGroup>;
 }
 
 function PanelLabel({ children }: { children: ReactNode }) {
   const { theme } = useWahbTheme();
   const { font } = useWahbTypography();
-  return <Text style={[styles.groupLabel, { color: theme.mutedForeground, fontFamily: font('bold') }]}>{children}</Text>;
+  return (
+    <Text
+      style={[
+        styles.groupLabel,
+        { color: theme.mutedForeground, fontFamily: font('bold') },
+      ]}
+    >
+      {children}
+    </Text>
+  );
 }
 
 function DisclosureIcon({ external = false }: { external?: boolean }) {
@@ -399,7 +624,21 @@ function DisclosureIcon({ external = false }: { external?: boolean }) {
   return <Icon color={theme.mutedForeground} size={19} />;
 }
 
-function SettingsRow({ icon: Icon, label, value, onPress, disabled = false, external = false }: { icon: LucideIcon; label: string; value?: string; onPress?: () => void; disabled?: boolean; external?: boolean }) {
+function SettingsRow({
+  icon: Icon,
+  label,
+  value,
+  onPress,
+  disabled = false,
+  external = false,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  disabled?: boolean;
+  external?: boolean;
+}) {
   const { theme } = useWahbTheme();
   const { font } = useWahbTypography();
   return (
@@ -408,82 +647,302 @@ function SettingsRow({ icon: Icon, label, value, onPress, disabled = false, exte
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.row, { borderBottomColor: theme.border }, disabled && styles.disabled, pressed && !disabled && styles.pressed]}
+      style={({ pressed }) => [
+        styles.row,
+        { borderBottomColor: theme.border },
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}
     >
       <Icon color={disabled ? theme.mutedForeground : theme.accent} size={18} />
-      <Text style={[styles.rowLabel, { color: disabled ? theme.mutedForeground : theme.foreground, fontFamily: font('body') }]}>{label}</Text>
-      {value ? <Text style={[styles.rowValue, { color: theme.mutedForeground, fontFamily: font('mono') }]}>{value}</Text> : null}
-      {!disabled ? <DisclosureIcon external={external} /> : <Text style={[styles.later, { color: theme.mutedForeground, fontFamily: font('bold') }]}>LATER</Text>}
+      <Text
+        style={[
+          styles.rowLabel,
+          {
+            color: disabled ? theme.mutedForeground : theme.foreground,
+            fontFamily: font('body'),
+          },
+        ]}
+      >
+        {label}
+      </Text>
+      {value ? (
+        <Text
+          style={[
+            styles.rowValue,
+            { color: theme.mutedForeground, fontFamily: font('mono') },
+          ]}
+        >
+          {value}
+        </Text>
+      ) : null}
+      {!disabled ? (
+        <DisclosureIcon external={external} />
+      ) : (
+        <Text
+          style={[
+            styles.later,
+            { color: theme.mutedForeground, fontFamily: font('bold') },
+          ]}
+        >
+          LATER
+        </Text>
+      )}
     </Pressable>
   );
 }
 
-function Choice({ value, selected, label, onPress }: { value: string; selected: string; label: string; onPress: () => void }) {
+function Choice({
+  value,
+  selected,
+  label,
+  onPress,
+}: {
+  value: string;
+  selected: string;
+  label: string;
+  onPress: () => void;
+}) {
   const { theme } = useWahbTheme();
   const { font } = useWahbTypography();
   const active = value === selected;
   return (
-    <Pressable accessibilityRole="radio" accessibilityState={{ selected: active }} onPress={onPress} style={({ pressed }) => [styles.choice, { borderBottomColor: theme.border }, pressed && styles.pressed]}>
-      <View style={[styles.radio, { borderColor: active ? theme.accent : theme.border }, active && { backgroundColor: theme.accent }]} />
-      <Text style={[styles.rowLabel, { color: theme.foreground, fontFamily: font('body') }]}>{label}</Text>
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ selected: active }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.choice,
+        { borderBottomColor: theme.border },
+        pressed && styles.pressed,
+      ]}
+    >
+      <View
+        style={[
+          styles.radio,
+          { borderColor: active ? theme.accent : theme.border },
+          active && { backgroundColor: theme.accent },
+        ]}
+      />
+      <Text
+        style={[
+          styles.rowLabel,
+          { color: theme.foreground, fontFamily: font('body') },
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-function ToggleRow({ label, copy, value, onChange }: { label: string; copy: string; value: boolean; onChange: (value: boolean) => void }) {
+function ToggleRow({
+  label,
+  copy,
+  value,
+  onChange,
+}: {
+  label: string;
+  copy: string;
+  value: boolean;
+  onChange: (value: boolean) => void;
+}) {
   const { theme } = useWahbTheme();
   const { font } = useWahbTypography();
   return (
     <View style={[styles.toggle, { borderBottomColor: theme.border }]}>
       <View style={styles.toggleCopy}>
-        <Text style={[styles.rowLabel, { color: theme.foreground, fontFamily: font('body') }]}>{label}</Text>
-        <Text style={[styles.note, { color: theme.mutedForeground, fontFamily: font('body') }]}>{copy}</Text>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: theme.foreground, fontFamily: font('body') },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.note,
+            { color: theme.mutedForeground, fontFamily: font('body') },
+          ]}
+        >
+          {copy}
+        </Text>
       </View>
-      <Switch accessibilityLabel={label} value={value} onValueChange={onChange} trackColor={{ false: theme.muted, true: theme.accent }} />
+      <Switch
+        accessibilityLabel={label}
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: theme.muted, true: theme.accent }}
+      />
     </View>
   );
 }
 
-function RateRow({ label, rateClass, value, onSelect }: { label: string; rateClass: PlaybackRateClass; value: number; onSelect: (rateClass: PlaybackRateClass, rate: number) => void }) {
+function RateRow({
+  label,
+  rateClass,
+  value,
+  onSelect,
+}: {
+  label: string;
+  rateClass: PlaybackRateClass;
+  value: number;
+  onSelect: (rateClass: PlaybackRateClass, rate: number) => void;
+}) {
   const { theme } = useWahbTheme();
   const { font } = useWahbTypography();
   return (
     <View style={[styles.rateRow, { borderBottomColor: theme.border }]}>
-      <Text style={[styles.rowLabel, { color: theme.foreground, fontFamily: font('body') }]}>{label}</Text>
-      <View style={styles.rates}>{playbackRates.map((rate) => <Pressable key={rate} accessibilityRole="radio" accessibilityState={{ selected: rate === value }} onPress={() => onSelect(rateClass, rate)} style={({ pressed }) => [styles.rate, { borderColor: rate === value ? theme.accent : theme.border, backgroundColor: rate === value ? theme.accent : theme.background }, pressed && styles.pressed]}><Text style={[styles.rateText, { color: rate === value ? theme.inverse : theme.foreground, fontFamily: font('mono') }]}>{rate}×</Text></Pressable>)}</View>
+      <Text
+        style={[
+          styles.rowLabel,
+          { color: theme.foreground, fontFamily: font('body') },
+        ]}
+      >
+        {label}
+      </Text>
+      <View style={styles.rates}>
+        {playbackRates.map((rate) => (
+          <Pressable
+            key={rate}
+            accessibilityRole="radio"
+            accessibilityState={{ selected: rate === value }}
+            onPress={() => onSelect(rateClass, rate)}
+            style={({ pressed }) => [
+              styles.rate,
+              {
+                borderColor: rate === value ? theme.accent : theme.border,
+                backgroundColor:
+                  rate === value ? theme.accent : theme.background,
+              },
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text
+              style={[
+                styles.rateText,
+                {
+                  color: rate === value ? theme.inverse : theme.foreground,
+                  fontFamily: font('mono'),
+                },
+              ]}
+            >
+              {rate}×
+            </Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { gap: spacing.lg, paddingBottom: 128, paddingHorizontal: layoutMetrics.pageGutter, paddingTop: spacing.md },
-  profileTeaser: { alignItems: 'center', borderRadius: radii.compact, borderWidth: 1, flexDirection: 'row', gap: spacing.md, padding: spacing.md },
-  teaserAvatar: { alignItems: 'center', borderRadius: 28, borderWidth: 2, height: 56, justifyContent: 'center', width: 56 },
+  content: {
+    gap: spacing.lg,
+    paddingBottom: 128,
+    paddingHorizontal: layoutMetrics.pageGutter,
+    paddingTop: spacing.md,
+  },
+  profileTeaser: {
+    alignItems: 'center',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md,
+  },
+  teaserAvatar: {
+    alignItems: 'center',
+    borderRadius: 28,
+    borderWidth: 2,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
+  },
   teaserInitial: { fontSize: 23 },
   teaserCopy: { flex: 1, gap: 2 },
   teaserName: { ...typeScale.bodyLarge },
-  teaserMeta: { ...typeScale.label, letterSpacing: 0.7, textTransform: 'uppercase' },
+  teaserMeta: {
+    ...typeScale.label,
+    letterSpacing: 0.7,
+    textTransform: 'uppercase',
+  },
   group: { gap: spacing.xs },
-  groupLabel: { ...typeScale.label, letterSpacing: 0.8, paddingHorizontal: spacing.xs, textTransform: 'uppercase' },
+  groupLabel: {
+    ...typeScale.label,
+    letterSpacing: 0.8,
+    paddingHorizontal: spacing.xs,
+    textTransform: 'uppercase',
+  },
   card: { borderRadius: radii.compact, borderWidth: 1, overflow: 'hidden' },
-  row: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 56, paddingHorizontal: spacing.md },
+  row: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+  },
   rowLabel: { ...typeScale.body, flex: 1 },
   rowValue: { ...typeScale.meta },
   later: { ...typeScale.micro, letterSpacing: 0.7 },
   disabled: { opacity: 0.54 },
   pressed: { opacity: 0.75, transform: [{ scale: 0.985 }] },
-  choice: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 54, paddingHorizontal: spacing.md },
+  choice: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 54,
+    paddingHorizontal: spacing.md,
+  },
   radio: { borderRadius: 9, borderWidth: 1, height: 18, width: 18 },
-  toggle: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 72, paddingHorizontal: spacing.md },
+  toggle: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    minHeight: 72,
+    paddingHorizontal: spacing.md,
+  },
   toggleCopy: { flex: 1, gap: 2 },
   note: { ...typeScale.meta },
   rateRow: { borderBottomWidth: 1, gap: spacing.sm, padding: spacing.md },
   rates: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  rate: { borderRadius: radii.compact, borderWidth: 1, minWidth: 46, paddingHorizontal: spacing.sm, paddingVertical: 7 },
+  rate: {
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    minWidth: 46,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+  },
   rateText: { ...typeScale.meta, textAlign: 'center' },
-  outlineAction: { alignItems: 'center', borderRadius: radii.compact, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing.md },
-  deleteAction: { alignItems: 'center', borderRadius: radii.compact, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing.md },
+  outlineAction: {
+    alignItems: 'center',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  deleteAction: {
+    alignItems: 'center',
+    borderRadius: radii.compact,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'center',
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
   outlineActionText: { ...typeScale.body },
-  version: { ...typeScale.meta, paddingBottom: spacing.lg, textAlign: 'center' },
+  version: {
+    ...typeScale.meta,
+    paddingBottom: spacing.lg,
+    textAlign: 'center',
+  },
 });

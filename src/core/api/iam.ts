@@ -3,9 +3,11 @@ import {
   messageResponseSchema,
   registerResponseSchema,
   iamProfileSchema,
+  iamRolesSchema,
   type AuthTokenPair,
   type RegisteredAccount,
   type IamProfile,
+  type IamRoles,
 } from './schemas';
 import type { Transport } from './transport';
 
@@ -22,6 +24,7 @@ export type IamApi = {
   getProfile(): Promise<IamProfile>;
   updateProfile(input: UpdateProfileInput): Promise<IamProfile>;
   uploadAvatar(input: AvatarUploadInput): Promise<IamProfile>;
+  getRoles(): Promise<IamRoles>;
 };
 
 export type PasswordCredentials = {
@@ -172,6 +175,12 @@ export function createIamApi(transport: Transport): IamApi {
           timeoutMs: 30_000,
         },
         iamProfileSchema,
+      );
+    },
+    getRoles() {
+      return transport.request(
+        { method: 'GET', path: '/api/v1/roles/me', authenticated: true },
+        iamRolesSchema,
       );
     },
   };

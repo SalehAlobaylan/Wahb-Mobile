@@ -4,6 +4,7 @@ import {
   useAudioPlayerStatus,
 } from 'expo-audio';
 import { useEvent, useEventListener } from 'expo';
+import Constants from 'expo-constants';
 import { useVideoPlayer, type VideoPlayer } from 'expo-video';
 import {
   createContext,
@@ -21,6 +22,8 @@ import {
   captureException,
   elapsedMilliseconds,
 } from '@/core/diagnostics/diagnostics';
+import { useConnectivity } from '@/core/network/connectivity-provider';
+import { useAuth } from '@/features/auth/auth-provider';
 import {
   defaultExperiencePreferences,
   readExperiencePreferences,
@@ -55,6 +58,8 @@ type StartPlaybackOptions = {
   autoplay?: boolean;
   /** Internal failover continuation; callers should never infer this from URLs. */
   candidateStartIndex?: number;
+  /** Prevents a changed-generation recovery from recursively refreshing. */
+  metadataRefreshAttempted?: boolean;
 };
 
 export type UpNextRequest = {
@@ -94,6 +99,8 @@ export type PlaybackController = PlaybackSnapshot & {
 const PlaybackContext = createContext<PlaybackController | null>(null);
 
 export function PlaybackProvider({ children }: { children: ReactNode }) {
+  const { clients } = useAuth();
+  const { networkCost } = useConnectivity();
   const videoPlayer = useVideoPlayer(null, (player) => {
     player.staysActiveInBackground = true;
     player.showNowPlayingNotification = false;
@@ -125,6 +132,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const bufferingStartedAt = useRef<number | null>(null);
   const fallbackStartedAt = useRef<number | null>(null);
   const activeSourceIndex = useRef(0);
+  const startRef = useRef<PlaybackController['start'] | null>(null);
   const handledRuntimeFailure = useRef<string | null>(null);
   const upNextCountdown = useRef(createUpNextCountdown());
   const upNextRequest = useRef<UpNextRequest | null>(null);
@@ -282,8 +290,30 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             if (sourceKind === 'video') {
               audio.pause();
               audio.clearLockScreenControls();
+              const bufferProfile =
+                source.qualityTier === 'high'
+                  ? {
+                      preferredForwardBufferDuration: 24,
+                      maxBufferBytes: 64 * 1024 * 1024,
+                    }
+                  : source.qualityTier === 'data_saver'
+                    ? {
+                        preferredForwardBufferDuration: 8,
+                        maxBufferBytes: 12 * 1024 * 1024,
+                      }
+                    : {
+                        preferredForwardBufferDuration: 15,
+                        maxBufferBytes: 32 * 1024 * 1024,
+                      };
+              video.bufferOptions =
+                source.type === 'hls'
+                  ? bufferProfile
+                  : { preferredForwardBufferDuration: 8 };
               await video.replaceAsync({
                 uri: source.url,
+                ...(source.type === 'hls'
+                  ? { contentType: 'hls' as const }
+                  : {}),
                 metadata: {
                   title: item.title,
                   ...(item.sourceName ? { artist: item.sourceName } : {}),
@@ -355,6 +385,34 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
               stage: source.stage,
               attempt: attempt + 1,
             });
+            const rendition = item.playback.renditions?.find(
+              (candidate) => candidate.url === source.url,
+            );
+            if (
+              rendition?.id &&
+              item.playback.activeRenditionGenerationId &&
+              (process.env.EXPO_OS === 'ios' ||
+                process.env.EXPO_OS === 'android')
+            ) {
+              const minute = Math.floor(Date.now() / 60_000);
+              void clients.cms
+                .recordPlaybackHealth({
+                  contentId: item.id,
+                  renditionGenerationId:
+                    item.playback.activeRenditionGenerationId,
+                  renditionId: rendition.id,
+                  failureClass: source.type === 'hls' ? 'manifest' : 'load',
+                  platform: process.env.EXPO_OS,
+                  appBuild:
+                    Constants.expoConfig?.ios?.buildNumber ??
+                    String(
+                      Constants.expoConfig?.android?.versionCode ?? 'unknown',
+                    ),
+                  networkClass: networkCost,
+                  idempotencyKey: `${item.id}:${rendition.id}:${minute}`,
+                })
+                .catch(() => undefined);
+            }
             if (attempt + 1 < attemptsForSource(source)) {
               await waitForRetry(retryDelayMs(attempt));
             }
@@ -364,6 +422,31 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
       if (request !== operation.current) {
         return;
+      }
+      if (!options.metadataRefreshAttempted) {
+        const currentDigest = item.playback.renditionDigest;
+        const currentGeneration = item.playback.activeRenditionGenerationId;
+        const etag =
+          currentDigest && currentGeneration
+            ? `W/"${currentGeneration}:${currentDigest}"`
+            : undefined;
+        try {
+          const refreshed = await clients.cms.getContentPlayback(item.id, etag);
+          if (
+            refreshed &&
+            (refreshed.rendition_digest !== currentDigest ||
+              refreshed.active_rendition_generation_id !== currentGeneration)
+          ) {
+            await startRef.current?.(
+              { ...item, playback: refreshed.playback },
+              { ...options, positionSeconds, metadataRefreshAttempted: true },
+            );
+            return;
+          }
+        } catch {
+          // Keep the original failure visible. Metadata refresh is a bounded
+          // recovery read and never hides the exhausted source ladder.
+        }
       }
       setSnapshot((current) =>
         current.item?.id === item.id
@@ -376,8 +459,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           : current,
       );
     },
-    [autoplayEnabled],
+    [autoplayEnabled, clients.cms, networkCost],
   );
+  useEffect(() => {
+    startRef.current = start;
+  }, [start]);
 
   const play = useCallback(() => {
     upNextCountdown.current.cancel();

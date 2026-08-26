@@ -10,6 +10,7 @@ export type ResolvedPlaybackSource = {
   hasVideo: boolean;
   stage: 'local' | 'primary' | 'fallback';
   origin: 'local-artifact' | 'cms-remote';
+  qualityTier?: 'data_saver' | 'standard' | 'high';
 };
 
 /**
@@ -30,6 +31,9 @@ export const remotePlaybackSourceResolver: PlaybackSourceResolver = {
         hasVideo: source.hasVideo,
         stage: 'primary',
         origin: 'cms-remote',
+        qualityTier: source.renditions?.find(
+          (rendition) => rendition.url === source.url,
+        )?.quality_tier,
       },
     ];
 
@@ -45,6 +49,9 @@ export const remotePlaybackSourceResolver: PlaybackSourceResolver = {
         hasVideo: source.fallbackHasVideo,
         stage: 'fallback',
         origin: 'cms-remote',
+        qualityTier: source.renditions?.find(
+          (rendition) => rendition.url === source.fallbackUrl,
+        )?.quality_tier,
       });
     }
 
@@ -66,7 +73,9 @@ export function resolveLocalFirstPlaybackSources(
   const remote = remotePlaybackSourceResolver.resolve(source);
   if (
     !localArtifact ||
-    !isVerifiedLocalPlaybackArtifact(localArtifact, scope, now)
+    !isVerifiedLocalPlaybackArtifact(localArtifact, scope, now) ||
+    !source.activeRenditionGenerationId ||
+    localArtifact.renditionGenerationId !== source.activeRenditionGenerationId
   ) {
     return remote;
   }

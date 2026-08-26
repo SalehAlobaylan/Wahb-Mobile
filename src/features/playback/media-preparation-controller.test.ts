@@ -16,8 +16,8 @@ describe('media preparation controller', () => {
   it('uses header-only probes for the bounded policy window', async () => {
     const probes: { url: string; signal: AbortSignal }[] = [];
     const controller = createMediaPreparationController({
-      probeSource: async (url, signal) => {
-        probes.push({ url, signal });
+      probeSource: async (candidate, signal) => {
+        probes.push({ url: candidate.sourceUrl, signal });
       },
     });
     const candidates = Array.from({ length: 6 }, (_, index) => ({
