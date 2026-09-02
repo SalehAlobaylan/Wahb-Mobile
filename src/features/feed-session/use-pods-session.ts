@@ -215,9 +215,16 @@ export function usePodsSession(duration?: PodsDurationPreference) {
       installationId,
       sessionId: current.serverSessionId,
       duration,
+      contentLanguage,
     });
     return response.hasNewContent;
-  }, [clients.cms, duration, installationId, sessionQuery.data]);
+  }, [
+    clients.cms,
+    contentLanguage,
+    duration,
+    installationId,
+    sessionQuery.data,
+  ]);
 
   const hideItem = useCallback(
     async (contentId: string): Promise<FrozenPodsSession | null> => {

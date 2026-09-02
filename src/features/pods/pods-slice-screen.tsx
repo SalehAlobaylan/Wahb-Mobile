@@ -757,7 +757,10 @@ export function PodsSliceScreen() {
 
   const checkForNewContent = useCallback(async () => {
     try {
-      setHasNewContent(await checkForFreshness());
+      // The pending-refresh signal is monotonic for the life of this frozen
+      // session. Concurrent foreground/reconnect checks must not let a slower
+      // false response erase an already observed true receipt.
+      if (await checkForFreshness()) setHasNewContent(true);
     } catch (error) {
       // A freshness check is advisory. Never disturb a readable frozen session
       // if it fails or its six-hour server snapshot has expired.
@@ -772,6 +775,39 @@ export function PodsSliceScreen() {
     }
     return undefined;
   }, [checkForNewContent, reconnectSequence]);
+
+  useEffect(() => {
+    if (
+      hasNewContent ||
+      !session?.serverSessionId ||
+      session.isOfflineSnapshot
+    ) {
+      return undefined;
+    }
+    // Frozen ordering remains stable until the listener chooses to refresh.
+    // Poll only while the screen/app is active, stop after detecting new
+    // inventory, and recheck immediately when returning from the background.
+    const checkWhileActive = () => {
+      if (AppState.currentState === 'active') {
+        void checkForNewContent();
+      }
+    };
+    const firstCheck = setTimeout(checkWhileActive, 0);
+    const interval = setInterval(checkWhileActive, 60_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkWhileActive();
+    });
+    return () => {
+      clearTimeout(firstCheck);
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [
+    checkForNewContent,
+    hasNewContent,
+    session?.isOfflineSnapshot,
+    session?.serverSessionId,
+  ]);
 
   const toggleEngagement = useCallback(
     async (kind: 'like' | 'bookmark') => {

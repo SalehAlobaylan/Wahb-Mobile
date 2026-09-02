@@ -251,7 +251,7 @@ export type PodsSessionPageRequest = PodsSessionRequest & {
 
 export type PodsSessionFreshnessRequest = Pick<
   PodsSessionRequest,
-  'installationId' | 'signal' | 'duration'
+  'installationId' | 'signal' | 'duration' | 'contentLanguage'
 > & {
   sessionId: string;
 };
@@ -532,13 +532,20 @@ export function createCmsApi(transport: Transport): CmsApi {
         podsSessionResponseSchema,
       );
     },
-    getPodsSessionFreshness({ installationId, sessionId, signal, duration }) {
+    getPodsSessionFreshness({
+      installationId,
+      sessionId,
+      signal,
+      duration,
+      contentLanguage,
+    }) {
       return transport.request(
         {
           path: `/api/v1/feed/pods/sessions/${sessionId}/freshness`,
           query: {
             session_id: installationId,
             ...(duration ? { duration } : {}),
+            ...(contentLanguage ? { content_language: contentLanguage } : {}),
           },
           signal,
           authenticated: true,

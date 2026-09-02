@@ -94,12 +94,16 @@ describe('CMS Pods freshness contract', () => {
       createCmsApi(transport).getPodsSessionFreshness({
         installationId: 'install-freshness-1',
         sessionId: 'b4a7e91c-9227-4c51-9fa8-9955e1e4c139',
+        contentLanguage: 'ar',
       }),
     ).resolves.toEqual({ hasNewContent: true });
 
     expect(captured).toMatchObject({
       path: '/api/v1/feed/pods/sessions/b4a7e91c-9227-4c51-9fa8-9955e1e4c139/freshness',
-      query: { session_id: 'install-freshness-1' },
+      query: {
+        session_id: 'install-freshness-1',
+        content_language: 'ar',
+      },
     });
   });
 });
