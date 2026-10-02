@@ -11,8 +11,14 @@
   user-generated comments and reporting. Apple determines the storefront rating;
   do not enter a made-up fixed rating.
 - No ads, IDFA, ATT, push registration, in-app purchases, subscriptions, social
-  login, downloads, camera, microphone, location, contacts, Bluetooth scanning,
+  login, downloads, microphone, location, contacts, Bluetooth scanning,
   local-network access, or account requirement for browsing in V1.
+- **Release blocker:** the current profile editor offers camera capture and
+  photo-library selection for an avatar, while the intended V1 position and
+  Android permission gate say there is no camera access. `app.config.ts` also
+  enables the Image Picker camera permission. Decide whether avatar capture is
+  in V1, then align the app, permission/privacy declarations, and both release
+  checklists before submission.
 - Account creation exists, so in-app account deletion remains discoverable from
   Account and Settings, requires reauthentication, revokes access immediately,
   and completes deletion asynchronously with a confirmation email.
@@ -45,14 +51,19 @@ submission when a data flow, SDK, or diagnostic behavior changes.
 `app.config.ts` is the native release source of truth:
 
 - `com.salehspace.wahb`, portrait phone app, iOS 16.4 minimum, no watchOS
-  target, associated domain, and standard system Now Playing support.
+  target, `wahb` URL scheme, and standard system Now Playing support. Android
+  has an HTTPS `autoVerify` intent filter. The current `app.config.ts` does not
+  declare iOS `associatedDomains`; add `applinks:wahb.salehspace.dev` before
+  accepting iOS Universal Link testing.
 - `PrivacyInfo.xcprivacy` is generated through CNG with required-reason API and
   collected-data declarations; tracking is false.
 - `ITSAppUsesNonExemptEncryption=false` records that Wahb uses only exempt
   platform transport encryption.
 - EAS has `development`, internal `preview`, store-distributed `testflight`
-  (preview channel), and `production` profiles. Runtime fingerprint and the
-  OTA compatibility rule from M10 remain mandatory.
+  (preview channel), and `production` build profiles. The EAS project is not
+  linked and `expo-updates` is not currently a dependency, so OTA publishing is
+  not ready. See the OTA runbook preconditions; runtime fingerprint and the OTA
+  compatibility rule remain mandatory once updates are enabled.
 
 After paid Apple enrollment, create the EAS project and credentials; do not
 invent or commit the project ID, Apple Team ID, certificate fingerprint, Apple
@@ -65,6 +76,10 @@ candidate in [`release-qualification-evidence.md`](release-qualification-evidenc
 an unavailable external value is a release blocker, never an assumed pass.
 
 ## Association deployment gate
+
+The current app config is missing the iOS Associated Domains entitlement. Add
+it before treating the public association-file check below as a complete
+Universal Link gate.
 
 Set these production Wahb-Platform deployment values after signing exists:
 

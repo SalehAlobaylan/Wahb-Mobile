@@ -16,6 +16,13 @@ Internet, vibration, audio settings, and media foreground-service permissions.
 It must not request notification, microphone, shared-storage, overlay, camera,
 location, contacts, Bluetooth scan, or local-network access.
 
+The current config conflicts with this policy: the profile editor exposes
+camera capture, `expo-image-picker` contributes the Android `CAMERA` permission,
+and `app.config.ts` does not block it, while `android:verify` rejects it. Treat
+the Android candidate as blocked until the avatar flow, product permission
+policy, and generated-manifest gate agree. The App Store candidate checklist
+tracks the same cross-platform decision.
+
 The media notification is an operating-system playback surface, not product
 push registration. Wahb never calls Android's notification-permission request
 in V1. If an Android version restricts notification display, do not add a

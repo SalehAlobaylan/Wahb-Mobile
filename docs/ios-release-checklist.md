@@ -35,6 +35,7 @@ seven days, so record each physical-device result and reinstall when necessary.
 | Dynamic Type        | Largest supported text size keeps Arabic and English readable without clipped actions.                                                                           |
 | RTL                 | Arabic route layout mirrors correctly; titles and mixed-language content retain readable direction.                                                              |
 | Reduced Motion      | Core use remains understandable without relying on the transient play/pause pulse or movement.                                                                   |
+| Avatar permissions  | The declared camera/photo-library policy matches the profile editor; any allowed prompts occur only after the user chooses to change the avatar.                |
 | Audio lifecycle     | Lock, background, interruption, call/Siri/alarm, Bluetooth connect/disconnect, route change, and cold relaunch retain the documented pause/resume/restore rules. |
 | Resource conditions | Validate Wi-Fi ↔ cellular, Low Power Mode, low-memory recovery, and a slow/failed source fallback.                                                               |
 

@@ -17,12 +17,15 @@ React Native, targets iPhone first, and deliberately has no web target.
 - Offline downloads are a primary future capability, but download persistence
   is not guessed in this foundation.
 
-The complete decisions behind the mobile product live in the parent project's
-`docs/wahb-mobile-grilling-decisions.md`.
+The current product surfaces and implemented/deferred behavior are summarized
+in the parent monorepo's `docs/mobile.md`. The parent
+`docs/wahb-mobile-grilling-decisions.md` is a historical decision record; later
+decisions and implementation may supersede its earlier recommendations.
 
 ## Requirements
 
-- Node.js 22.13 or newer (`.nvmrc` selects Node 22)
+- Node.js 22.13 or newer for local development (`.nvmrc` selects Node 22; CI
+  currently uses Node 24)
 - npm
 - Xcode for iOS development
 - Android Studio for Android development
@@ -53,12 +56,16 @@ build, not Expo Go.
 | `npm start`                      | Start Metro for a development build                 |
 | `npm run ios`                    | Generate/run the iOS development build              |
 | `npm run android`                | Generate/run the Android development build          |
-| `npm run validate`               | Typecheck, lint, formatting check, and tests        |
+| `npm run validate`               | Typecheck, lint, formatting, repository hygiene, and tests |
 | `npm run test:maestro:list`      | List committed Maestro device flows                 |
 | `npm run test:maestro:smoke`     | Run Maestro flows on a configured simulator         |
 | `npm run test:integration:local` | Confirm local CMS/IAM contracts after `../start.sh` |
 | `npm run doctor`                 | Validate the Expo dependency/configuration graph    |
 | `npm run prebuild:clean`         | Regenerate native projects from app config          |
+| `npm run prebuild:verify`        | Clean CNG prebuild without installing dependencies |
+| `npm run android:verify`         | Generate Android output and check its permissions   |
+| `npm run release:verify`         | Check native release configuration                  |
+| `npm run release:links:verify`   | Check deployed Universal/App Link association files |
 
 ## Architecture
 
@@ -71,9 +78,15 @@ config plugins are the source of native configuration.
 Jest is hermetic: production, staging, and developer service requests fail
 unless a test supplies a fixture transport. Maestro is device-only and is not
 part of the hermetic JavaScript gate; install the [Maestro CLI](https://maestro.mobile.dev/getting-started/installing-maestro)
-and provide its documented simulator/device fixture before invoking its smoke
-command. The local integration command only allows loopback CMS and IAM URLs
-and requires the parent stack to be started with `./start.sh`.
+and use the flow-specific prerequisites described in `.maestro/*.yaml`. The
+auth flow requires runner-provided `MAESTRO_EMAIL` and `MAESTRO_PASSWORD`; the
+Saved/RTL flow requires a verified account fixture; feed flows require their
+expected feed content to be available from the configured backend. This repo
+does not include a Maestro fixture seeder, and the auth/deletion flow stops
+before submitting the destructive request. The local integration command only
+allows loopback CMS and IAM URLs, checks service health plus anonymous Pods and
+News response shapes, and requires the parent stack to be started with
+`./start.sh`.
 
 ## Security
 

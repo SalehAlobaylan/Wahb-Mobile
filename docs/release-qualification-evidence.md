@@ -11,9 +11,11 @@ as **BLOCKED**; never replace them with assumed passes.
 | `npm run android:verify`                        | Run output and date                                             | PENDING                                               |
 | `Wahb-Platform: npm run verify`                 | Run output and date                                             | PENDING                                               |
 | Expo/EAS project linked                         | Real project ID held in EAS only                                | BLOCKED — owner authority required                    |
+| OTA runtime available                           | `expo-updates` dependency and matching native build             | BLOCKED — dependency is not installed                 |
 | Preview OTA + incompatible-runtime rejection    | Update groups and device evidence                               | BLOCKED — EAS authority required                      |
 | Production rollout + rollback                   | Percentages, update groups, recovery evidence                   | BLOCKED — EAS authority required                      |
-| AASA / Android Asset Links                      | `release:links:verify` output                                   | BLOCKED — signing identifiers and deployment required |
+| iOS Associated Domains + AASA / Android Asset Links | App entitlement plus `release:links:verify` output             | BLOCKED — iOS entitlement, signing identifiers, and deployment required |
+| Camera permission policy                        | Avatar picker behavior, declared privacy, generated manifests   | BLOCKED — app config conflicts with the no-camera policy |
 | iPhone + paired Watch Now Playing               | Device, OS, build, date, result                                 | BLOCKED — physical test required                      |
 | Android device matrix                           | Device, API, build, date, result                                | BLOCKED — physical test required                      |
 | Accessibility/privacy matrix                    | Device, language, Dynamic Type, VoiceOver/TalkBack, date        | BLOCKED — physical test required                      |

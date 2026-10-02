@@ -150,11 +150,13 @@ Fill, and Transcript are explicit visual modes. Transcript uses only the
 CMS-approved full-text response and presents a readable on-media excerpt over
 the editorial red halo; it is intentionally not represented as timestamped
 karaoke until CMS provides timed segments. The native draggable detail sheet
-retains the full read-only Transcript alongside Comments and About. It does not
-invent comments or transcript text when the public CMS endpoint has no approved
-data. Comments remain read-only until the authenticated writing slice. Likes
-and bookmarks already use the durable interaction ledger; the native share
-sheet records a share only after the operating system reports it completed.
+retains the full Transcript alongside Comments and About. It does not invent
+comment or transcript data when CMS has none. Comments are readable without an
+account; posting is gated to signed-in users and enters the durable outbox.
+People can delete their own comments, report comments, and block authors. CMS
+remains the authorization and moderation authority. Likes and bookmarks use the
+same durable interaction ledger; the native share sheet records a share only
+after the operating system reports it completed.
 
 ## News and reader continuity
 
@@ -257,12 +259,14 @@ installation ID. Reset Local Wahb Data is the explicit exception: it clears
 local credentials, query state, SQLite feed/outbox/reader data, and regenerates
 that installation ID.
 
-The app recognizes only `https://wahb.salehspace.dev/...` public Universal
-Links and `wahb://...` as a private fallback. It routes content, verification,
-and reset intents through one dispatcher without logging a URL, token, or query
-string. Production deployment still must publish the matching Apple App Site
-Association and Android Asset Links files on `wahb.salehspace.dev`; native app
-configuration alone cannot establish domain ownership.
+The app's shared dispatcher recognizes only `https://wahb.salehspace.dev/...`
+links and `wahb://...` as a private fallback. It routes content, verification,
+and reset intents without logging a URL, token, or query string. Android has an
+HTTPS `autoVerify` intent filter in `app.config.ts`. The iOS
+`associatedDomains` entitlement is not currently configured, and production
+must publish matching Apple App Site Association and Android Asset Links files
+on `wahb.salehspace.dev`. iOS Universal Links remain a release blocker until
+the entitlement and hosted association file are both in place.
 
 ## Native configuration
 
@@ -309,12 +313,13 @@ from a durable interaction becomes a local tombstone, so deleted or moderated
 content cannot reappear through a cached Pods session; a `404` article also
 removes its local reader snapshot.
 
-`eas.json` defines isolated `development`, `preview`, and `production`
-channels. Runtime fingerprinting prevents an OTA update from crossing a native
-configuration boundary. Only JavaScript, styles, translations, and assets may
-ship by OTA; any native module, permission, background mode, or app-config
-change requires a new store build. The EAS project URL/ID is intentionally not
-invented in source: add it only when the production EAS project is created.
+`eas.json` defines `development`, `preview`, `testflight` (on the `preview`
+channel), and `production` build profiles. Runtime fingerprinting is the OTA
+compatibility policy. OTA rollout is not ready in this checkout: the real EAS
+project is not linked and `expo-updates` is not a package dependency. The
+runbook lists those as preconditions. Once enabled, only JavaScript, styles,
+translations, and assets may ship by OTA; any native module, permission,
+background mode, or app-config change requires a new store build.
 
 CI performs JavaScript validation plus a clean CNG prebuild and unsigned iOS
 Simulator build. Before release, run the documented physical-iPhone matrix:
