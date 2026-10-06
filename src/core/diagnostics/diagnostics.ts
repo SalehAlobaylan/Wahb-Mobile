@@ -29,6 +29,7 @@ export const diagnosticNames = [
   'pods_hide_item_failed',
   'pods_mute_source_failed',
   'pods_progress_queue_failed',
+  'pods_audio_seek_failed',
   'pods_session_health',
   'pods_session_offline_restore',
   'pods_session_page_failed',

@@ -49,6 +49,66 @@ describe('IAM profile contract schema', () => {
 });
 
 describe('Pods contract schema', () => {
+  it('retains corrected legacy audio presentation for HLS and MP4 podcast renditions', () => {
+    const fallbackUrl = 'https://media.example.test/episode.mp4';
+    const parsed = podsFeedResponseSchema.parse({
+      items: [
+        {
+          ...validItem,
+          title: 'التجسس الإسرائيلي على أمريكا',
+          has_video: false,
+          rendition_set_version: 1,
+          fallback_playback_url: fallbackUrl,
+          fallback_playback_type: 'mp4',
+          fallback_has_video: false,
+          media_renditions: [
+            {
+              type: 'hls',
+              url: validItem.playback_url,
+              is_primary: true,
+              has_video: false,
+            },
+            {
+              type: 'mp4',
+              url: fallbackUrl,
+              is_primary: false,
+              has_video: false,
+            },
+          ],
+        },
+      ],
+      cursor: null,
+    });
+    expect(parsed.quarantinedItemCount).toBe(0);
+    expect(parsed.items[0]?.playback).toMatchObject({
+      type: 'hls',
+      hasVideo: false,
+      fallbackType: 'mp4',
+      fallbackHasVideo: false,
+      renditions: [
+        { type: 'hls', has_video: false },
+        { type: 'mp4', has_video: false },
+      ],
+    });
+  });
+  it.each([undefined, null, { schema_version: 999, family: 'invalid' }])(
+    'keeps valid frozen media when scene decoration is %j',
+    (audio_scene_profile) => {
+      const parsed = podsFeedResponseSchema.parse({
+        items: [{ ...validItem, audio_scene_profile }],
+        cursor: null,
+      });
+      expect(parsed.items).toHaveLength(1);
+      const restored = podsFeedResponseSchema.parse({
+        items: JSON.parse(JSON.stringify(parsed.items)),
+        cursor: null,
+      });
+      expect(restored.items[0]?.playback.url).toBe(validItem.playback_url);
+      expect(restored.items[0]?.audio_scene_profile).toEqual(
+        audio_scene_profile,
+      );
+    },
+  );
   it('normalizes CMS playback metadata into the native discriminated source', () => {
     const parsed = podsFeedResponseSchema.parse({
       items: [validItem],

@@ -12,6 +12,7 @@ export type AdaptiveMediaSignals = {
   memoryPressure: boolean;
   network: NetworkCost;
 };
+let processMemoryPressure = false;
 
 /**
  * Normalizes only permission-free lifecycle signals. Memory pressure remains
@@ -24,7 +25,9 @@ export function useAdaptiveMediaSignals(): AdaptiveMediaSignals {
     AppState.currentState === 'active',
   );
   const [lowPowerMode, setLowPowerMode] = useState(false);
-  const [memoryPressure, setMemoryPressure] = useState(false);
+  const [memoryPressure, setMemoryPressure] = useState(
+    () => processMemoryPressure,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -41,8 +44,12 @@ export function useAdaptiveMediaSignals(): AdaptiveMediaSignals {
       'change',
       (nextState) => setForeground(nextState === 'active'),
     );
-    const memorySubscription = AppState.addEventListener('memoryWarning', () =>
-      setMemoryPressure(true),
+    const memorySubscription = AppState.addEventListener(
+      'memoryWarning',
+      () => {
+        processMemoryPressure = true;
+        setMemoryPressure(true);
+      },
     );
     return () => {
       mounted = false;

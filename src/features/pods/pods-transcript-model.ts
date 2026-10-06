@@ -32,8 +32,8 @@ function recordsFrom(value: unknown): TimestampRecord[] {
 function numberAt(record: TimestampRecord, keys: readonly string[]) {
   for (const key of keys) {
     const value = record[key];
-    const number = typeof value === 'number' ? value : Number(value);
-    if (Number.isFinite(number) && number >= 0) return number;
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0)
+      return value;
   }
   return undefined;
 }
@@ -54,7 +54,7 @@ function timeAt(record: TimestampRecord, kind: 'start' | 'end') {
 }
 
 function textAt(record: TimestampRecord) {
-  for (const key of ['text', 'word', 'token', 'punctuated_word']) {
+  for (const key of ['text', 'punctuated_word', 'word', 'token']) {
     const value = record[key];
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
@@ -123,41 +123,57 @@ function groupWords(words: RawCue[]): TranscriptCue[] {
 export function normalizeTranscript(
   fullText: string | undefined,
   timestamps: unknown,
+  durationSeconds = Infinity,
 ): TranscriptPresentation {
   const text = fullText?.replace(/\s+/g, ' ').trim() ?? '';
   const raw = rawCues(timestamps);
-  const hasTimedCue = raw.some((cue) => cue.startSeconds !== undefined);
-
-  if (hasTimedCue) {
-    const source = raw.every((cue) => cue.isWord)
-      ? groupWords(raw)
-      : raw.map((cue, index) => ({
-          id: `segment-${index}-${cue.startSeconds ?? 'untimed'}`,
+  const rawSegments = raw.filter((cue) => !cue.isWord);
+  const readerText =
+    text ||
+    (rawSegments.length ? rawSegments : raw).map((cue) => cue.text).join(' ');
+  const valid = raw.filter(
+    (cue) =>
+      cue.startSeconds !== undefined &&
+      cue.endSeconds !== undefined &&
+      cue.endSeconds > cue.startSeconds &&
+      cue.startSeconds < durationSeconds,
+  );
+  const segments = valid.filter((cue) => !cue.isWord);
+  const words = valid
+    .filter((cue) => cue.isWord)
+    .sort((a, b) => a.startSeconds! - b.startSeconds!);
+  if (valid.length) {
+    const source = segments.length
+      ? segments.map((cue, index) => ({
+          id: `segment-${index}-${cue.startSeconds}`,
           endSeconds: cue.endSeconds,
           startSeconds: cue.startSeconds,
           text: cue.text,
-        }));
+        }))
+      : groupWords(words);
     const cues = source
-      .sort(
-        (a, b) => (a.startSeconds ?? Infinity) - (b.startSeconds ?? Infinity),
+      .sort((a, b) => a.startSeconds! - b.startSeconds!)
+      .filter(
+        (cue, index, all) =>
+          index === 0 || cue.startSeconds !== all[index - 1]!.startSeconds,
       )
       .map((cue, index, all) => ({
         ...cue,
-        endSeconds:
-          cue.endSeconds ??
-          (all[index + 1]?.startSeconds !== undefined
-            ? all[index + 1]!.startSeconds
-            : undefined),
+        endSeconds: Math.min(
+          cue.endSeconds!,
+          all[index + 1]?.startSeconds ?? Infinity,
+          durationSeconds,
+        ),
       }));
     return {
       cues,
       mode: 'timed',
-      text: text || cues.map((cue) => cue.text).join(' '),
+      text: readerText,
     };
   }
 
-  return text
-    ? { cues: [], mode: 'reader', text }
+  return readerText
+    ? { cues: [], mode: 'reader', text: readerText }
     : { cues: [], mode: 'unavailable', text: '' };
 }
 
@@ -168,33 +184,25 @@ export function transcriptCues(
   return normalizeTranscript(fullText, timestamps).cues;
 }
 
-/** Finds the current half-open cue and clamps before/after the transcript. */
+/** Normalized cues are ordered/nonoverlapping. Silence has no active cue. */
 export function activeTranscriptCueIndex(
   cues: readonly TranscriptCue[],
   positionSeconds: number,
 ): number {
-  const timed = cues.filter((cue) => cue.startSeconds !== undefined);
-  if (!timed.length) return 0;
-  const position = Math.max(0, positionSeconds);
-  if (position <= (timed[0]!.startSeconds ?? 0)) return 0;
-
+  if (!cues.length || !Number.isFinite(positionSeconds) || positionSeconds < 0)
+    return -1;
   let low = 0;
-  let high = timed.length - 1;
+  let high = cues.length - 1;
   while (low <= high) {
     const middle = Math.floor((low + high) / 2);
-    if ((timed[middle]!.startSeconds ?? Infinity) <= position) low = middle + 1;
+    if ((cues[middle]!.startSeconds ?? Infinity) <= positionSeconds)
+      low = middle + 1;
     else high = middle - 1;
   }
-  const index = Math.max(0, Math.min(timed.length - 1, high));
-  const cue = timed[index]!;
-  if (
-    cue.endSeconds !== undefined &&
-    position >= cue.endSeconds &&
-    index < timed.length - 1
-  ) {
-    return index + 1;
-  }
-  return index;
+  const cue = cues[high];
+  return cue?.endSeconds !== undefined && positionSeconds < cue.endSeconds
+    ? high
+    : -1;
 }
 
 export function formatTranscriptTime(seconds: number | undefined) {

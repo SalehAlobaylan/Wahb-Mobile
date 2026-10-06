@@ -1,0 +1,473 @@
+[
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001"
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "3fe12423",
+      "family": "orbit",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": 0.0419,
+          "y": 0.0678,
+          "size": 0.4335,
+          "rotation": -7.9079,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 16606
+        },
+        {
+          "x": 0.8426,
+          "y": 0.0247,
+          "size": 0.3617,
+          "rotation": 10.39,
+          "kind": "ring",
+          "opacity": 0.3208,
+          "periodMs": 22325
+        },
+        {
+          "x": 0.0714,
+          "y": 0.8165,
+          "size": 0.5457,
+          "rotation": -1.89,
+          "kind": "disc",
+          "opacity": 0.3524,
+          "periodMs": 15126
+        },
+        {
+          "x": 0.9469,
+          "y": 0.905,
+          "size": 0.7565,
+          "rotation": -26.8484,
+          "kind": "ring",
+          "opacity": 0.2979,
+          "periodMs": 16567
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000002"
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "40e125b6",
+      "family": "ribbon",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": 0.0487,
+          "y": 0.1256,
+          "size": 0.4617,
+          "rotation": 12.6316,
+          "kind": "band",
+          "opacity": 0.7,
+          "periodMs": 18339
+        },
+        {
+          "x": 0.9584,
+          "y": -0.0175,
+          "size": 0.7496,
+          "rotation": 16.6732,
+          "kind": "band",
+          "opacity": 0.1775,
+          "periodMs": 17701
+        },
+        {
+          "x": 0.2104,
+          "y": 0.8348,
+          "size": 0.631,
+          "rotation": 6.1155,
+          "kind": "band",
+          "opacity": 0.173,
+          "periodMs": 22386
+        },
+        {
+          "x": 0.8825,
+          "y": 0.7418,
+          "size": 0.4103,
+          "rotation": -23.7655,
+          "kind": "band",
+          "opacity": 0.197,
+          "periodMs": 20312
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000003"
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "41e12749",
+      "family": "dawn",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": 0.2368,
+          "y": -0.0048,
+          "size": 0.5225,
+          "rotation": 0.6497,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 17329
+        },
+        {
+          "x": 0.9509,
+          "y": -0.0781,
+          "size": 0.7286,
+          "rotation": -32.9745,
+          "kind": "ring",
+          "opacity": 0.3367,
+          "periodMs": 12815
+        },
+        {
+          "x": -0.0884,
+          "y": 0.9499,
+          "size": 0.6597,
+          "rotation": 3.6494,
+          "kind": "disc",
+          "opacity": 0.2217,
+          "periodMs": 22742
+        },
+        {
+          "x": 0.8305,
+          "y": 0.863,
+          "size": 0.5142,
+          "rotation": 34.1108,
+          "kind": "ring",
+          "opacity": 0.1706,
+          "periodMs": 12473
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "parentId": "00000000-0000-4000-8000-000000000003"
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "3fe12423",
+      "family": "dawn",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": 0.0419,
+          "y": 0.0678,
+          "size": 0.4335,
+          "rotation": -7.9079,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 16606
+        },
+        {
+          "x": 0.8426,
+          "y": 0.0247,
+          "size": 0.3617,
+          "rotation": 10.39,
+          "kind": "ring",
+          "opacity": 0.3208,
+          "periodMs": 22325
+        },
+        {
+          "x": 0.0714,
+          "y": 0.8165,
+          "size": 0.5457,
+          "rotation": -1.89,
+          "kind": "disc",
+          "opacity": 0.3524,
+          "periodMs": 15126
+        },
+        {
+          "x": 0.9469,
+          "y": 0.905,
+          "size": 0.7565,
+          "rotation": -26.8484,
+          "kind": "ring",
+          "opacity": 0.2979,
+          "periodMs": 16567
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "parentId": "00000000-0000-4000-8000-000000000003"
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "40e125b6",
+      "family": "dawn",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": 0.0487,
+          "y": 0.1256,
+          "size": 0.4617,
+          "rotation": 12.6316,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 18339
+        },
+        {
+          "x": 0.9584,
+          "y": -0.0175,
+          "size": 0.7496,
+          "rotation": 16.6732,
+          "kind": "ring",
+          "opacity": 0.1775,
+          "periodMs": 17701
+        },
+        {
+          "x": 0.2104,
+          "y": 0.8348,
+          "size": 0.631,
+          "rotation": 6.1155,
+          "kind": "disc",
+          "opacity": 0.173,
+          "periodMs": 22386
+        },
+        {
+          "x": 0.8825,
+          "y": 0.7418,
+          "size": 0.4103,
+          "rotation": -23.7655,
+          "kind": "ring",
+          "opacity": 0.197,
+          "periodMs": 20312
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "profile": {
+        "schema_version": 1,
+        "generator_version": 1,
+        "seed": "7d6a41b2",
+        "family": "dawn",
+        "motion": "gentle"
+      }
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "7d6a41b2",
+      "family": "dawn",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": -0.0763,
+          "y": 0.0958,
+          "size": 0.6551,
+          "rotation": -26.4258,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 12570
+        },
+        {
+          "x": 0.7689,
+          "y": 0.1517,
+          "size": 0.587,
+          "rotation": -7.633,
+          "kind": "ring",
+          "opacity": 0.3146,
+          "periodMs": 17237
+        },
+        {
+          "x": 0.1306,
+          "y": 0.8261,
+          "size": 0.4052,
+          "rotation": 26.0837,
+          "kind": "disc",
+          "opacity": 0.2722,
+          "periodMs": 18761
+        },
+        {
+          "x": 0.8765,
+          "y": 0.7345,
+          "size": 0.3904,
+          "rotation": -2.2428,
+          "kind": "ring",
+          "opacity": 0.2132,
+          "periodMs": 22791
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "profile": {
+        "schema_version": 1,
+        "generator_version": 1,
+        "seed": "7d6a41b2",
+        "family": "lagoon",
+        "motion": "gentle"
+      }
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "7d6a41b2",
+      "family": "lagoon",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": -0.0763,
+          "y": 0.0958,
+          "size": 0.6551,
+          "rotation": -26.4258,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 12570
+        },
+        {
+          "x": 0.7689,
+          "y": 0.1517,
+          "size": 0.587,
+          "rotation": -7.633,
+          "kind": "ring",
+          "opacity": 0.3146,
+          "periodMs": 17237
+        },
+        {
+          "x": 0.1306,
+          "y": 0.8261,
+          "size": 0.4052,
+          "rotation": 26.0837,
+          "kind": "disc",
+          "opacity": 0.2722,
+          "periodMs": 18761
+        },
+        {
+          "x": 0.8765,
+          "y": 0.7345,
+          "size": 0.3904,
+          "rotation": -2.2428,
+          "kind": "ring",
+          "opacity": 0.2132,
+          "periodMs": 22791
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "profile": {
+        "schema_version": 1,
+        "generator_version": 1,
+        "seed": "7d6a41b2",
+        "family": "orbit",
+        "motion": "gentle"
+      }
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "7d6a41b2",
+      "family": "orbit",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": -0.0763,
+          "y": 0.0958,
+          "size": 0.6551,
+          "rotation": -26.4258,
+          "kind": "disc",
+          "opacity": 0.7,
+          "periodMs": 12570
+        },
+        {
+          "x": 0.7689,
+          "y": 0.1517,
+          "size": 0.587,
+          "rotation": -7.633,
+          "kind": "ring",
+          "opacity": 0.3146,
+          "periodMs": 17237
+        },
+        {
+          "x": 0.1306,
+          "y": 0.8261,
+          "size": 0.4052,
+          "rotation": 26.0837,
+          "kind": "disc",
+          "opacity": 0.2722,
+          "periodMs": 18761
+        },
+        {
+          "x": 0.8765,
+          "y": 0.7345,
+          "size": 0.3904,
+          "rotation": -2.2428,
+          "kind": "ring",
+          "opacity": 0.2132,
+          "periodMs": 22791
+        }
+      ]
+    }
+  },
+  {
+    "input": {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "profile": {
+        "schema_version": 1,
+        "generator_version": 1,
+        "seed": "7d6a41b2",
+        "family": "ribbon",
+        "motion": "gentle"
+      }
+    },
+    "recipe": {
+      "version": 1,
+      "seed": "7d6a41b2",
+      "family": "ribbon",
+      "motion": "gentle",
+      "shapes": [
+        {
+          "x": -0.0763,
+          "y": 0.0958,
+          "size": 0.6551,
+          "rotation": -26.4258,
+          "kind": "band",
+          "opacity": 0.7,
+          "periodMs": 12570
+        },
+        {
+          "x": 0.7689,
+          "y": 0.1517,
+          "size": 0.587,
+          "rotation": -7.633,
+          "kind": "band",
+          "opacity": 0.3146,
+          "periodMs": 17237
+        },
+        {
+          "x": 0.1306,
+          "y": 0.8261,
+          "size": 0.4052,
+          "rotation": 26.0837,
+          "kind": "band",
+          "opacity": 0.2722,
+          "periodMs": 18761
+        },
+        {
+          "x": 0.8765,
+          "y": 0.7345,
+          "size": 0.3904,
+          "rotation": -2.2428,
+          "kind": "band",
+          "opacity": 0.2132,
+          "periodMs": 22791
+        }
+      ]
+    }
+  }
+]

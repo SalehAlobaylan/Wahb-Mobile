@@ -40,6 +40,7 @@ type Props = PropsWithChildren<{
   /** Park the collapsed sheet below the viewport while the feed advances. */
   concealed?: boolean;
   onSnapChange?: (snap: BottomSheetSnap) => void;
+  onInteractionChange?: (interacting: boolean) => void;
   testID?: string;
 }>;
 
@@ -53,6 +54,7 @@ export const DraggableBottomSheet = forwardRef<
     concealed = false,
     expandedContent,
     onSnapChange,
+    onInteractionChange,
     testID,
   },
   ref,
@@ -117,10 +119,17 @@ export const DraggableBottomSheet = forwardRef<
     [animateTo],
   );
 
+  const reportInteraction = useCallback(
+    (interacting: boolean) => {
+      onInteractionChange?.(interacting);
+    },
+    [onInteractionChange],
+  );
   const pan = useMemo(
     () =>
       Gesture.Pan()
         .onBegin(() => {
+          runOnJS(reportInteraction)(true);
           startHeight.value = height.value;
         })
         .onUpdate((event) => {
@@ -147,8 +156,9 @@ export const DraggableBottomSheet = forwardRef<
             easing: Easing.inOut(Easing.ease),
           });
           runOnJS(setSnapValue)(next);
-        }),
-    [height, points, setSnapValue, startHeight],
+        })
+        .onFinalize(() => runOnJS(reportInteraction)(false)),
+    [height, points, reportInteraction, setSnapValue, startHeight],
   );
   const doubleTap = useMemo(
     () =>

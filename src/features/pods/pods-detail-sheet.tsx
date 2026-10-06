@@ -1,9 +1,10 @@
-import { useInfiniteQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { hapticSelection } from '@/core/haptics/feedback';
 import {
   forwardRef,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -21,6 +22,7 @@ import { MessageCircle, FileText, Info, X } from 'lucide-react-native';
 import { useTranslation } from 'react-i18next';
 
 import type { PodsItem } from '@/core/api';
+import { fontForText } from '@/design/typography';
 import {
   colors,
   fontFamilies,
@@ -32,9 +34,11 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { ReportSheet } from '@/features/moderation/report-sheet';
 import { useTranscriptQuery } from './use-transcript-query';
+import { normalizeTranscript } from './pods-transcript-model';
 import {
   DraggableBottomSheet,
   type DraggableBottomSheetHandle,
+  type BottomSheetSnap,
 } from '@/components/feed/draggable-bottom-sheet';
 
 type DetailTab = 'comments' | 'transcript' | 'about';
@@ -44,18 +48,32 @@ type PodsDetailSheetProps = {
   item: PodsItem;
   installationId: string;
   collapsedContent: ReactNode;
+  visible: boolean;
+  onSnapChange?: (snap: BottomSheetSnap) => void;
+  onInteractionChange?: (interacting: boolean) => void;
 };
 
 export const PodsDetailSheet = forwardRef<
   PodsDetailSheetHandle,
   PodsDetailSheetProps
->(function PodsDetailSheet({ item, installationId, collapsedContent }, ref) {
+>(function PodsDetailSheet(
+  {
+    item,
+    installationId,
+    collapsedContent,
+    visible,
+    onSnapChange,
+    onInteractionChange,
+  },
+  ref,
+) {
   const { t } = useTranslation();
   const router = useRouter();
   const { clients, subject } = useAuth();
   const outbox = useOutbox();
   const sheetRef = useRef<DraggableBottomSheetHandle>(null);
   const [tab, setTab] = useState<DetailTab>('comments');
+  const [snap, setSnap] = useState<BottomSheetSnap>('collapsed');
   const [commentDraft, setCommentDraft] = useState('');
   const [reportCommentId, setReportCommentId] = useState<string | null>(null);
   const [hiddenCommentIds, setHiddenCommentIds] = useState<Set<string>>(
@@ -134,13 +152,30 @@ export const PodsDetailSheet = forwardRef<
       ) ?? [];
   const transcriptQuery = useTranscriptQuery(
     item.transcript_id,
-    tab === 'transcript',
+    visible && snap !== 'collapsed' && tab === 'transcript',
   );
+  const transcriptText = useMemo(() => {
+    const transcript = transcriptQuery.data;
+    if (transcript?.content_item_id !== item.id) return undefined;
+    return normalizeTranscript(
+      transcript.full_text,
+      { segments: transcript.segments, words: transcript.word_timestamps },
+      item.duration_sec,
+    ).text;
+  }, [item.duration_sec, item.id, transcriptQuery.data]);
+  const generation = useMutation({
+    mutationFn: (id: string) => clients.cms.requestTranscription(id),
+  });
 
   return (
     <>
       <DraggableBottomSheet
         ref={sheetRef}
+        onSnapChange={(next) => {
+          setSnap(next);
+          onSnapChange?.(next);
+        }}
+        onInteractionChange={onInteractionChange}
         expandedContent={
           <View style={styles.panel}>
             <View style={styles.sheetHeader}>
@@ -202,10 +237,31 @@ export const PodsDetailSheet = forwardRef<
               {tab === 'transcript' ? (
                 <TranscriptPanel
                   hasTranscript={Boolean(item.transcript_id)}
-                  isError={transcriptQuery.isError}
+                  isError={
+                    transcriptQuery.isError ||
+                    Boolean(
+                      transcriptQuery.data &&
+                      transcriptQuery.data.content_item_id !== item.id,
+                    )
+                  }
                   isLoading={transcriptQuery.isLoading}
                   onRetry={() => void transcriptQuery.refetch()}
-                  text={transcriptQuery.data?.full_text}
+                  text={transcriptText}
+                  generationPending={
+                    generation.variables === item.id && generation.isPending
+                  }
+                  generationRequested={
+                    generation.variables === item.id && generation.isSuccess
+                  }
+                  generationFailed={
+                    generation.variables === item.id && generation.isError
+                  }
+                  onGenerate={() =>
+                    subject
+                      ? generation.mutate(item.id)
+                      : router.push('/sign-in')
+                  }
+                  canGenerate={Boolean(subject)}
                 />
               ) : null}
               {tab === 'about' ? <AboutPanel item={item} /> : null}
@@ -318,9 +374,7 @@ function CommentsPanel({
           editable={canComment}
           onChangeText={onChangeDraft}
           placeholder={
-            canComment
-              ? t('pods.commentPlaceholder')
-              : t('pods.commentSignIn')
+            canComment ? t('pods.commentPlaceholder') : t('pods.commentSignIn')
           }
           placeholderTextColor={colors.inkMuted}
           style={styles.commentInput}
@@ -331,9 +385,7 @@ function CommentsPanel({
           onPress={onSubmit}
           style={styles.commentSubmit}
         >
-          <Text style={styles.commentSubmitText}>
-            {t('pods.commentPost')}
-          </Text>
+          <Text style={styles.commentSubmitText}>{t('pods.commentPost')}</Text>
         </Pressable>
       </View>
       {comments.length === 0 ? (
@@ -415,16 +467,59 @@ function TranscriptPanel({
   isLoading,
   onRetry,
   text,
+  generationPending,
+  generationRequested,
+  generationFailed,
+  onGenerate,
+  canGenerate,
 }: {
   hasTranscript: boolean;
   isError: boolean;
   isLoading: boolean;
   onRetry: () => void;
   text?: string;
+  generationPending: boolean;
+  generationRequested: boolean;
+  generationFailed: boolean;
+  onGenerate: () => void;
+  canGenerate: boolean;
 }) {
   const { t } = useTranslation();
   if (!hasTranscript) {
-    return <Text style={styles.emptyText}>{t('pods.noTranscript')}</Text>;
+    return (
+      <View>
+        <Text style={styles.emptyText}>
+          {t(
+            generationRequested
+              ? 'pods.transcriptRequested'
+              : 'pods.noTranscript',
+          )}
+        </Text>
+        {!generationRequested && (
+          <Pressable
+            accessibilityRole="button"
+            disabled={generationPending}
+            onPress={onGenerate}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryText}>
+              {t(
+                generationPending
+                  ? 'pods.transcriptRequesting'
+                  : canGenerate
+                    ? 'pods.requestTranscript'
+                    : 'account.signIn',
+              )}
+            </Text>
+          </Pressable>
+        )}
+        {generationFailed && (
+          <Text style={styles.emptyText}>
+            {t('pods.transcriptUnavailable')}
+          </Text>
+        )}
+      </View>
+    );
   }
   if (isLoading) {
     return <ActivityIndicator color={colors.pressRed} />;
@@ -434,11 +529,28 @@ function TranscriptPanel({
       <RetryPanel label={t('pods.transcriptUnavailable')} onRetry={onRetry} />
     );
   }
-  return <Text style={styles.transcriptText}>{text}</Text>;
+  return (
+    <Text
+      style={[
+        styles.transcriptText,
+        { fontFamily: fontForText(text, 'body'), writingDirection: 'auto' },
+      ]}
+    >
+      {text || t('pods.transcriptUnavailable')}
+    </Text>
+  );
 }
 
 function AboutPanel({ item }: { item: PodsItem }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const date = new Date(item.published_at ?? '');
+  const range =
+    item.parent_id &&
+    Number.isFinite(item.chapter_start_ms) &&
+    Number.isFinite(item.chapter_end_ms) &&
+    item.chapter_end_ms! > item.chapter_start_ms!
+      ? `${formatDuration(item.chapter_start_ms! / 1000)}–${formatDuration(item.chapter_end_ms! / 1000)}`
+      : null;
   return (
     <View style={styles.list}>
       <Text style={styles.aboutLabel}>{item.type}</Text>
@@ -449,6 +561,26 @@ function AboutPanel({ item }: { item: PodsItem }) {
       <Text style={styles.aboutText}>
         {t('pods.duration', { duration: formatDuration(item.duration_sec) })}
       </Text>
+      {Number.isFinite(date.getTime()) && (
+        <>
+          <Text style={styles.aboutLabel}>{t('pods.published')}</Text>
+          <Text style={styles.aboutText}>
+            {date.toLocaleDateString(i18n.language, {
+              day: 'numeric',
+              month: 'long',
+              year: 'numeric',
+            })}
+          </Text>
+        </>
+      )}
+      {range && (
+        <>
+          <Text style={styles.aboutLabel}>{t('pods.episodeExcerpt')}</Text>
+          <Text style={[styles.aboutText, { writingDirection: 'ltr' }]}>
+            {range}
+          </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -476,8 +608,9 @@ function RetryPanel({
 }
 
 function formatDuration(durationSeconds: number): string {
-  const minutes = Math.floor(durationSeconds / 60);
-  const seconds = durationSeconds % 60;
+  const wholeSeconds = Math.max(0, Math.floor(durationSeconds));
+  const minutes = Math.floor(wholeSeconds / 60);
+  const seconds = wholeSeconds % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 

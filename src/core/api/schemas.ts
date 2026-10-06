@@ -155,6 +155,8 @@ export const podsItemSchema = z
     is_bookmarked: z.boolean(),
     is_archived: z.boolean(),
     transcript_id: z.uuid().optional(),
+    // Decoration is interpreted separately; malformed profiles cannot reject media.
+    audio_scene_profile: z.unknown().optional(),
   })
   .passthrough()
   .superRefine((item, context) => {

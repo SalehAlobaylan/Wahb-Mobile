@@ -2,11 +2,12 @@ import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { VideoView } from 'expo-video';
 import { useMutation } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import {
   Bookmark,
   FileText,
   Heart,
+  Headphones,
   Info,
   Maximize2,
   MessageCircle,
@@ -94,6 +95,12 @@ import {
   normalizeTranscript,
 } from './pods-transcript-model';
 import { useTranscriptQuery } from './use-transcript-query';
+import { AudioScene } from './audio-scene/audio-scene';
+import { AudioTranscriptForeground } from './audio-scene/audio-transcript-foreground';
+import { AudioPlayerControls } from './audio-scene/audio-player-controls';
+import { sceneRecipe } from './audio-scene/scene-generator';
+import { sceneCanAnimate } from './audio-scene/scene-motion-policy';
+import { useAudioDisplayMode } from './audio-scene/use-audio-display-mode';
 
 import {
   colors,
@@ -140,6 +147,17 @@ export function PodsSliceScreen() {
   const outbox = useOutbox();
   const { reconnectSequence } = useConnectivity();
   const reducedMotion = useReducedMotion();
+  const [audioDisplayMode, selectAudioDisplayMode] = useAudioDisplayMode();
+  const [sceneFocused, setSceneFocused] = useState(false);
+  const [pagerDragging, setPagerDragging] = useState(false);
+  const [sheetCovered, setSheetCovered] = useState(false);
+  const [sheetDragging, setSheetDragging] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setSceneFocused(true);
+      return () => setSceneFocused(false);
+    }, []),
+  );
   const { clients, subject } = useAuth();
   const consumption = useRef<{
     key: string;
@@ -165,6 +183,10 @@ export function PodsSliceScreen() {
     'fit',
   );
   const detailSheetRef = useRef<PodsDetailSheetHandle>(null);
+  const openFullTranscript = useCallback(
+    () => detailSheetRef.current?.open('transcript'),
+    [],
+  );
   const [engagement, setEngagement] = useState<
     Record<string, { liked?: boolean; bookmarked?: boolean }>
   >({});
@@ -183,6 +205,7 @@ export function PodsSliceScreen() {
     policySignature: string;
   } | null>(null);
   const [pageHeight, setPageHeight] = useState(0);
+  const [audioFooterHeight, setAudioFooterHeight] = useState(0);
   const [isTranscriptDragging, setIsTranscriptDragging] = useState(false);
   const [swipeCardsPerSecond, setSwipeCardsPerSecond] = useState(0);
   const scrollVelocity = useRef({ offsetY: 0, timestamp: 0, reportedAt: 0 });
@@ -273,6 +296,28 @@ export function PodsSliceScreen() {
     isOfflineSnapshot && connectionRequiredForId === item?.id;
   const isCurrent = playback.item?.id === item?.id;
   const isVideoVisible = isCurrent && playback.kind === 'video';
+  const isAudioPresentation =
+    isCurrent && playback.kind && playback.phase !== 'loading'
+      ? playback.kind === 'audio'
+      : activePlaybackItem?.playback.hasVideo === false;
+  const audioSceneMotion = sceneCanAnimate({
+    selected: true,
+    current: isCurrent,
+    focused: sceneFocused,
+    foreground: adaptiveSignals.foreground,
+    playing: playback.phase === 'playing' && !playback.didReachEnd,
+    buffering: playback.isBuffering,
+    reducedMotion,
+    lowPowerMode: adaptiveSignals.lowPowerMode,
+    memoryPressure: adaptiveSignals.memoryPressure,
+    interacting:
+      pagerDragging || isTranscriptDragging || swipeCardsPerSecond > 0,
+    covered:
+      sheetCovered ||
+      sheetDragging ||
+      isOverflowVisible ||
+      Boolean(reportTarget),
+  });
   const showUpNext =
     playback.upNextSeconds !== null &&
     isCurrent &&
@@ -305,7 +350,18 @@ export function PodsSliceScreen() {
       : 0;
   const transcriptQuery = useTranscriptQuery(
     item?.transcript_id,
-    displayMode === 'transcript',
+    sceneFocused &&
+      adaptiveSignals.foreground &&
+      (isAudioPresentation
+        ? audioDisplayMode === 'transcript'
+        : displayMode === 'transcript'),
+  );
+  const transcriptTimestamps = useMemo(
+    () => ({
+      segments: transcriptQuery.data?.segments,
+      words: transcriptQuery.data?.word_timestamps,
+    }),
+    [transcriptQuery.data],
   );
   const requestTranscription = useMutation({
     mutationFn: (contentId: string) =>
@@ -1113,6 +1169,7 @@ export function PodsSliceScreen() {
         keyExtractor={(entry) => `${session.id}:${entry.item.id}`}
         maxToRenderPerBatch={3}
         onMomentumScrollEnd={(event) => {
+          setPagerDragging(false);
           setSwipeCardsPerSecond(0);
           if (pageHeight <= 0) {
             return;
@@ -1147,8 +1204,10 @@ export function PodsSliceScreen() {
         }}
         onEndReachedThreshold={0.5}
         onScrollBeginDrag={() => {
+          setPagerDragging(true);
           pagerHasInteracted.current = true;
         }}
+        onScrollEndDrag={() => setPagerDragging(false)}
         onScroll={observePagerVelocity}
         scrollEventThrottle={100}
         pagingEnabled
@@ -1176,7 +1235,18 @@ export function PodsSliceScreen() {
             testID={index === position ? 'pods-playback-toggle' : undefined}
             style={[styles.page, { height: pageHeight }]}
           >
-            {index === position && isVideoVisible ? (
+            {(
+              index === position ? isAudioPresentation : !page.item.has_video
+            ) ? (
+              <AudioScene
+                recipe={sceneRecipe({
+                  id: page.item.id,
+                  parentId: page.item.parent_id,
+                  profile: page.item.audio_scene_profile,
+                })}
+                animate={index === position && audioSceneMotion}
+              />
+            ) : index === position && isVideoVisible ? (
               <VideoView
                 player={playback.videoPlayer}
                 style={[
@@ -1200,7 +1270,7 @@ export function PodsSliceScreen() {
             ) : (
               <View style={styles.audioFallback} />
             )}
-            {index === position && playbackPulse ? (
+            {index === position && !isAudioPresentation && playbackPulse ? (
               <View pointerEvents="none" style={styles.playbackPulse}>
                 {playbackPulse === 'play' ? (
                   <Play
@@ -1217,6 +1287,28 @@ export function PodsSliceScreen() {
                 )}
               </View>
             ) : null}
+            {index === position && isAudioPresentation ? (
+              <AudioTranscriptForeground
+                itemId={item.id}
+                title={item.title}
+                sourceName={item.source_name}
+                artwork={
+                  item.type === 'PODCAST' &&
+                  (item.rendition_set_version ?? 1) <= 1
+                    ? undefined
+                    : item.thumbnail_url
+                }
+                duration={item.duration_sec}
+                transcript={transcriptQuery.data}
+                showTranscript={audioDisplayMode === 'transcript'}
+                positionSeconds={playbackPositionSeconds}
+                loading={transcriptQuery.isLoading}
+                error={transcriptQuery.isError}
+                onRetry={() => void transcriptQuery.refetch()}
+                onRead={openFullTranscript}
+                bottomClearance={Math.max(205, audioFooterHeight + 12)}
+              />
+            ) : null}
           </Pressable>
         )}
         showsVerticalScrollIndicator={false}
@@ -1224,7 +1316,7 @@ export function PodsSliceScreen() {
         windowSize={3}
       />
       <View pointerEvents="box-none" style={styles.card}>
-        {displayMode === 'transcript' ? (
+        {isAudioPresentation ? null : displayMode === 'transcript' ? (
           <LinearGradient
             colors={[
               'rgba(98, 12, 22, 0.48)',
@@ -1238,46 +1330,76 @@ export function PodsSliceScreen() {
         ) : (
           <View pointerEvents="none" style={styles.overlay} />
         )}
-        <View style={styles.displayRail}>
-          <Pressable
-            accessibilityLabel={t('pods.fit')}
-            accessibilityRole="button"
-            onPress={() => selectDisplayMode('fit')}
-            style={({ pressed }) => [
-              styles.railButton,
-              displayMode === 'fit' && styles.railButtonActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Minimize2 color={colors.inkInverse} size={18} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel={t('pods.fill')}
-            accessibilityRole="button"
-            onPress={() => selectDisplayMode('fill')}
-            style={({ pressed }) => [
-              styles.railButton,
-              displayMode === 'fill' && styles.railButtonActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Maximize2 color={colors.inkInverse} size={18} />
-          </Pressable>
-          <Pressable
-            accessibilityLabel={t('pods.transcript')}
-            accessibilityRole="button"
-            accessibilityState={{ selected: displayMode === 'transcript' }}
-            onPress={() => selectDisplayMode('transcript')}
-            testID="pods-display-transcript"
-            style={({ pressed }) => [
-              styles.railButton,
-              displayMode === 'transcript' && styles.railButtonActive,
-              pressed && styles.pressed,
-            ]}
-          >
-            <FileText color={colors.inkInverse} size={18} />
-          </Pressable>
-        </View>
+        {isAudioPresentation ? (
+          <View style={styles.displayRail}>
+            {(['listen', 'transcript'] as const).map((mode) => (
+              <Pressable
+                key={mode}
+                accessibilityLabel={t(`pods.${mode}`)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: audioDisplayMode === mode }}
+                testID={`pods-display-${mode}`}
+                onPress={() => selectAudioDisplayMode(mode)}
+                style={[
+                  styles.railButton,
+                  audioDisplayMode === mode && styles.railButtonActive,
+                ]}
+              >
+                {mode === 'listen' ? (
+                  <Headphones color={colors.inkInverse} size={18} />
+                ) : (
+                  <FileText color={colors.inkInverse} size={18} />
+                )}
+              </Pressable>
+            ))}
+            <Pressable
+              accessibilityLabel={t('pods.about')}
+              accessibilityRole="button"
+              onPress={() => dispatchIntent('open-about')}
+              style={styles.railButton}
+            >
+              <Info color={colors.inkInverse} size={18} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.displayRail}>
+            <Pressable
+              accessibilityLabel={t('pods.fit')}
+              accessibilityRole="button"
+              onPress={() => selectDisplayMode('fit')}
+              style={[
+                styles.railButton,
+                displayMode === 'fit' && styles.railButtonActive,
+              ]}
+            >
+              <Minimize2 color={colors.inkInverse} size={18} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('pods.fill')}
+              accessibilityRole="button"
+              onPress={() => selectDisplayMode('fill')}
+              style={[
+                styles.railButton,
+                displayMode === 'fill' && styles.railButtonActive,
+              ]}
+            >
+              <Maximize2 color={colors.inkInverse} size={18} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel={t('pods.transcript')}
+              accessibilityRole="button"
+              accessibilityState={{ selected: displayMode === 'transcript' }}
+              onPress={() => selectDisplayMode('transcript')}
+              testID="pods-display-transcript"
+              style={[
+                styles.railButton,
+                displayMode === 'transcript' && styles.railButtonActive,
+              ]}
+            >
+              <FileText color={colors.inkInverse} size={18} />
+            </Pressable>
+          </View>
+        )}
         <PodsFeedChrome duration={duration} onDurationChange={setDuration} />
         <View style={styles.feedStatusRow}>
           {hasNewContent ? (
@@ -1309,16 +1431,22 @@ export function PodsSliceScreen() {
             </Text>
           </View>
         ) : null}
-        {displayMode === 'transcript' ? (
+        {!isAudioPresentation && displayMode === 'transcript' ? (
           <PodsTranscriptMode
             canRequestTranscription={Boolean(subject)}
-            generationRequested={requestTranscription.isSuccess}
+            generationRequested={
+              requestTranscription.isSuccess &&
+              requestTranscription.variables === item.id
+            }
             hasTranscript={Boolean(item.transcript_id)}
             isError={transcriptQuery.isError}
             isLoading={transcriptQuery.isLoading}
             isPaused={isCurrent && playback.phase !== 'playing'}
             itemId={item.id}
-            isRequesting={requestTranscription.isPending}
+            isRequesting={
+              requestTranscription.isPending &&
+              requestTranscription.variables === item.id
+            }
             onRequestGeneration={() => {
               if (!subject) {
                 router.push('/sign-in');
@@ -1332,54 +1460,94 @@ export function PodsSliceScreen() {
             sourceName={item.source_name}
             text={transcriptQuery.data?.full_text}
             title={item.title}
-            timestamps={{
-              segments: transcriptQuery.data?.segments,
-              words: transcriptQuery.data?.word_timestamps,
-            }}
+            timestamps={transcriptTimestamps}
           />
         ) : null}
 
-        {displayMode !== 'transcript' ? (
-          <View style={styles.footer}>
-            <View style={styles.metaRow}>
-              <Radio color={colors.pressRedDark} size={16} strokeWidth={2.2} />
-              <Text style={[styles.metaText, { fontFamily: font('bold') }]}>
-                {item.type}
-              </Text>
-              <Text style={[styles.metaText, { fontFamily: font('mono') }]}>
-                {formatDuration(item.duration_sec)}
-              </Text>
-            </View>
-            <Text
-              style={[styles.title, { fontFamily: font('editorial') }]}
-              numberOfLines={3}
-            >
-              {item.title}
-            </Text>
-            {!!item.source_name && (
-              <Text style={[styles.source, { fontFamily: font('medium') }]}>
-                {item.source_name}
-              </Text>
+        {isAudioPresentation || displayMode !== 'transcript' ? (
+          <View
+            style={styles.footer}
+            onLayout={({ nativeEvent }) => {
+              if (isAudioPresentation)
+                setAudioFooterHeight(nativeEvent.layout.height);
+            }}
+          >
+            {!isAudioPresentation ? (
+              <>
+                <View style={styles.metaRow}>
+                  <Radio
+                    color={colors.pressRedDark}
+                    size={16}
+                    strokeWidth={2.2}
+                  />
+                  <Text style={[styles.metaText, { fontFamily: font('bold') }]}>
+                    {item.type}
+                  </Text>
+                  <Text style={[styles.metaText, { fontFamily: font('mono') }]}>
+                    {formatDuration(item.duration_sec)}
+                  </Text>
+                </View>
+                <Text
+                  style={[styles.title, { fontFamily: font('editorial') }]}
+                  numberOfLines={3}
+                >
+                  {item.title}
+                </Text>
+                {!!item.source_name && (
+                  <Text style={[styles.source, { fontFamily: font('medium') }]}>
+                    {item.source_name}
+                  </Text>
+                )}
+              </>
+            ) : (
+              <AudioPlayerControls
+                key={item.id}
+                position={playbackPositionSeconds}
+                duration={playbackDurationSeconds}
+                playing={isCurrent && playback.phase === 'playing'}
+                buffering={
+                  isCurrent &&
+                  (playback.isBuffering || playback.phase === 'loading')
+                }
+                disabled={
+                  requiresConnection || (isCurrent && Boolean(playback.error))
+                }
+                seekable={isCurrent}
+                rate={playback.rate}
+                onToggle={() => void togglePlayback()}
+                onSeek={(seconds) => {
+                  playback.cancelUpNext();
+                  void playback
+                    .seekTo(seconds)
+                    .catch((error) =>
+                      captureException('pods_audio_seek_failed', error),
+                    );
+                }}
+                onRate={playback.setTemporaryRate}
+                onScrubChange={setIsTranscriptDragging}
+              />
             )}
 
-            <View
-              accessible
-              accessibilityLabel={t('pods.playbackProgress')}
-              accessibilityRole="progressbar"
-              accessibilityValue={{
-                max: Math.round(playbackDurationSeconds),
-                min: 0,
-                now: Math.round(playbackPositionSeconds),
-              }}
-              style={styles.progressTrack}
-            >
+            {!isAudioPresentation && (
               <View
-                style={[
-                  styles.progressFill,
-                  { width: `${playbackProgress * 100}%` },
-                ]}
-              />
-            </View>
+                accessible
+                accessibilityLabel={t('pods.playbackProgress')}
+                accessibilityRole="progressbar"
+                accessibilityValue={{
+                  max: Math.round(playbackDurationSeconds),
+                  min: 0,
+                  now: Math.round(playbackPositionSeconds),
+                }}
+                style={styles.progressTrack}
+              >
+                <View
+                  style={[
+                    styles.progressFill,
+                    { width: `${playbackProgress * 100}%` },
+                  ]}
+                />
+              </View>
+            )}
 
             {requiresConnection ? (
               <View
@@ -1483,6 +1651,9 @@ export function PodsSliceScreen() {
       {installationId ? (
         <PodsDetailSheet
           ref={detailSheetRef}
+          visible={sceneFocused && adaptiveSignals.foreground}
+          onSnapChange={(snap) => setSheetCovered(snap !== 'collapsed')}
+          onInteractionChange={setSheetDragging}
           installationId={installationId}
           item={item}
           collapsedContent={

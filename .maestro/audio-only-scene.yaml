@@ -1,0 +1,23 @@
+appId: com.salehspace.wahb
+---
+# Requires an approved audio-only unit selected in a disposable qualification session.
+# Device power/reduced-motion/interruptions are exercised by the accompanying runbook.
+- launchApp:
+    clearState: false
+- assertVisible:
+    id: 'pods-audio-scene'
+- tapOn:
+    id: 'pods-display-listen'
+- assertVisible:
+    id: 'pods-audio-play-pause'
+- assertNotVisible:
+    id: 'pods-audio-open-transcript'
+- tapOn:
+    id: 'pods-display-transcript'
+- assertVisible:
+    id: 'pods-audio-open-transcript'
+- tapOn:
+    id: 'pods-audio-open-transcript'
+- assertVisible:
+    id: 'pods-bottom-sheet'
+- takeScreenshot: 'audio-only-transcript-sheet'

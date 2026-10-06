@@ -145,6 +145,31 @@ session cancels advancement; it never crosses into a newly ranked session.
 
 ## Pods detail surface
 
+### Audio scene boundary
+
+The native audio surface leads the consumer product. `features/pods/audio-scene`
+owns only deterministic geometry, motion policy, the separately restored audio
+caption preference, and a bounded phrase foreground. It has no media owner,
+audio-session configuration, frame timer, or model dependency. `PodsSliceScreen`
+passes selected-source evidence and the existing controller state. Route focus
+is required because feed tabs remain mounted. Memory, power, reduced-motion,
+sheet/swipe, and buffering constraints cancel Reanimated motion; lock-screen
+audio continues under the existing provider.
+
+The independent web implementation uses the same immutable v1 golden recipes.
+Run root `node --experimental-strip-types scripts/verify-audio-scene-contract.mjs`
+to verify drift. Malformed optional `audio_scene_profile` metadata falls back
+locally and cannot invalidate strict playback fields or old frozen snapshots.
+The initial release has no semantic-profile writer or loudness-envelope worker.
+
+Caption normalization runs per transcript revision, with phrase segments before
+timed words, valid numeric half-open bounds, explicit silence gaps, and at most
+three mounted foreground cues. Ownership must match the current item. The
+Aggregation/CMS atomization path already produces child-relative transcripts;
+clients do not subtract the parent offset again. Full reading and generation
+remain in the existing detail sheet. Native performance/continuity qualification
+is tracked separately in the root audio-scene implementation evidence.
+
 The production Pods surface keeps cinematic content chrome compact: Fit,
 Fill, and Transcript are explicit visual modes. Transcript uses only the
 CMS-approved full-text response and presents a readable on-media excerpt over
