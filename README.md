@@ -1,7 +1,13 @@
 # Wahb Mobile
 
-The native iOS and Android client for Wahb. The app is built with Expo and
+The primary end-user interface for Wahb on native iOS and Android. The app is built with Expo and
 React Native, targets iPhone first, and deliberately has no web target.
+
+Wahb-Platform is the Web preview mirroring Mobile features. Every Web product
+feature or reliability change must also be implemented here in a way suited to
+native lifecycle, navigation, playback, accessibility and security. See the
+[canonical product rule](../docs/PRD.md#core-1-consumer-app-wahb-mobile-leads-wahb-platform-follows)
+and [native experience monitoring](../docs/mobile.md#real-user-experience).
 
 ## Product baseline
 
@@ -51,21 +57,21 @@ build, not Expo Go.
 
 ## Commands
 
-| Command                          | Purpose                                             |
-| -------------------------------- | --------------------------------------------------- |
-| `npm start`                      | Start Metro for a development build                 |
-| `npm run ios`                    | Generate/run the iOS development build              |
-| `npm run android`                | Generate/run the Android development build          |
+| Command                          | Purpose                                                    |
+| -------------------------------- | ---------------------------------------------------------- |
+| `npm start`                      | Start Metro for a development build                        |
+| `npm run ios`                    | Generate/run the iOS development build                     |
+| `npm run android`                | Generate/run the Android development build                 |
 | `npm run validate`               | Typecheck, lint, formatting, repository hygiene, and tests |
-| `npm run test:maestro:list`      | List committed Maestro device flows                 |
-| `npm run test:maestro:smoke`     | Run Maestro flows on a configured simulator         |
-| `npm run test:integration:local` | Confirm local CMS/IAM contracts after `../start.sh` |
-| `npm run doctor`                 | Validate the Expo dependency/configuration graph    |
-| `npm run prebuild:clean`         | Regenerate native projects from app config          |
-| `npm run prebuild:verify`        | Clean CNG prebuild without installing dependencies |
-| `npm run android:verify`         | Generate Android output and check its permissions   |
-| `npm run release:verify`         | Check native release configuration                  |
-| `npm run release:links:verify`   | Check deployed Universal/App Link association files |
+| `npm run test:maestro:list`      | List committed Maestro device flows                        |
+| `npm run test:maestro:smoke`     | Run Maestro flows on a configured simulator                |
+| `npm run test:integration:local` | Confirm local CMS/IAM contracts after `../start.sh`        |
+| `npm run doctor`                 | Validate the Expo dependency/configuration graph           |
+| `npm run prebuild:clean`         | Regenerate native projects from app config                 |
+| `npm run prebuild:verify`        | Clean CNG prebuild without installing dependencies         |
+| `npm run android:verify`         | Generate Android output and check its permissions          |
+| `npm run release:verify`         | Check native release configuration                         |
+| `npm run release:links:verify`   | Check deployed Universal/App Link association files        |
 
 ## Architecture
 

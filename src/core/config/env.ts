@@ -13,6 +13,7 @@ const envSchema = z.object({
   EXPO_PUBLIC_CMS_URL: z.url().default('http://localhost:8080'),
   EXPO_PUBLIC_IAM_URL: z.url().default('http://localhost:4003'),
   EXPO_PUBLIC_SENTRY_DSN: optionalUrl,
+  EXPO_PUBLIC_APP_RELEASE: z.string().optional(),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;
@@ -30,6 +31,7 @@ export function getEnv(): AppEnv {
     EXPO_PUBLIC_CMS_URL: process.env.EXPO_PUBLIC_CMS_URL,
     EXPO_PUBLIC_IAM_URL: process.env.EXPO_PUBLIC_IAM_URL,
     EXPO_PUBLIC_SENTRY_DSN: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    EXPO_PUBLIC_APP_RELEASE: process.env.EXPO_PUBLIC_APP_RELEASE || undefined,
   });
   return cachedEnv;
 }

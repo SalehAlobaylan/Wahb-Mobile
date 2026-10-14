@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,6 +12,7 @@ import {
   type LayoutChangeEvent,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewToken,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import {
@@ -25,6 +26,13 @@ import {
   NewsFeedChrome,
 } from '@/components/navigation/feed-chrome';
 import type { NewsFeedResponse } from '@/core/api';
+import { beginReaderIntent } from '@/core/experience/journeys';
+import {
+  useFeedExperience,
+  startExperiencePagination,
+  commitExperienceUnits,
+  experienceBoundaryReached,
+} from '@/core/experience/use-feed-experience';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { getInstallationId } from '@/core/identity/installation-id';
@@ -92,6 +100,7 @@ export function NewsScreen() {
   const [sheetConcealed, setSheetConcealed] = useState(false);
   const [pageHeight, setPageHeight] = useState(0);
   const [window, setWindow] = useState<'today' | 'week' | 'month'>('today');
+  const requestWindow = useRef(window);
   const [coverageStory, setCoverageStory] = useState<
     NewsSlide['featured'] | null
   >(null);
@@ -117,6 +126,39 @@ export function NewsScreen() {
     staleTime: Infinity,
     gcTime: Infinity,
   });
+
+  const [experienceFocused, setExperienceFocused] = useState(false);
+  useFocusEffect(
+    useCallback(() => {
+      setExperienceFocused(true);
+      return () => setExperienceFocused(false);
+    }, []),
+  );
+  const { rendered: experienceRendered } = useFeedExperience({
+    surface: 'news',
+    key: String(window),
+    active: experienceFocused,
+    error: firstPageQuery.isError,
+    empty: firstPageQuery.isSuccess && firstPageQuery.data.slides.length === 0,
+  });
+  const experienceViewability = useMemo(
+    () => ({ itemVisiblePercentThreshold: 50 }),
+    [],
+  );
+  const onExperienceViewable = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken<NewsSlide>[] }) => {
+      const first = viewableItems.find((token) => token.isViewable);
+      if (first) experienceRendered(first.item.featured.lead_id);
+    },
+    [experienceRendered],
+  );
+  useEffect(() => {
+    if (experienceFocused)
+      commitExperienceUnits(
+        'news',
+        slides.map((slide) => slide.slide_id),
+      );
+  }, [experienceFocused, slides]);
 
   const replaceSlides = useCallback((next: NewsSlide[]) => {
     slidesRef.current = next;
@@ -155,6 +197,10 @@ export function NewsScreen() {
   const handlePagerScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const offset = Math.max(0, event.nativeEvent.contentOffset.y);
+      experienceBoundaryReached(
+        'news',
+        pageHeight > 0 && offset >= (slidesRef.current.length - 1) * pageHeight,
+      );
       const previousOffset = lastScrollOffsetRef.current;
       lastScrollOffsetRef.current = offset;
       setSheetConcealed((current) => {
@@ -162,7 +208,7 @@ export function NewsScreen() {
         return current === next ? current : next;
       });
     },
-    [],
+    [pageHeight],
   );
 
   useEffect(() => {
@@ -200,6 +246,7 @@ export function NewsScreen() {
         limit: 10,
         window,
       });
+      if (requestWindow.current !== window) return;
       const known = new Set(slidesRef.current.map((slide) => slide.slide_id));
       const unseen = page.slides.filter((slide) => !known.has(slide.slide_id));
       if (unseen.length > 0) {
@@ -225,6 +272,10 @@ export function NewsScreen() {
       return;
     }
     loadingMoreRef.current = true;
+    const measurement = startExperiencePagination(
+      'news',
+      slidesRef.current.map((slide) => slide.slide_id),
+    );
     try {
       const page = await clients.cms.getNewsPage({
         cursor: cursorRef.current,
@@ -232,9 +283,19 @@ export function NewsScreen() {
         limit: 10,
         window,
       });
+      if (requestWindow.current !== window) {
+        measurement.cancel();
+        return;
+      }
+      if (page.slides.length === 0) measurement.end();
       cursorRef.current = page.cursor;
       replaceSlides(mergeNewSlides(slidesRef.current, page.slides));
     } catch (error) {
+      if (requestWindow.current !== window) {
+        measurement.cancel();
+        return;
+      }
+      measurement.failed();
       captureException('news_page_failed', error);
     } finally {
       loadingMoreRef.current = false;
@@ -272,6 +333,7 @@ export function NewsScreen() {
       leadId: string,
       coverage?: NewsSlide['featured'],
     ) => {
+      beginReaderIntent(leadId);
       if (coverage)
         setArticleCoverageContext(leadId, {
           storyId,
@@ -345,6 +407,7 @@ export function NewsScreen() {
         window={window}
         onWindowChange={(nextWindow) => {
           if (nextWindow === window) return;
+          requestWindow.current = nextWindow;
           cursorRef.current = null;
           activeSlideIdRef.current = null;
           visibleIndexRef.current = 0;
@@ -357,6 +420,8 @@ export function NewsScreen() {
         }}
       />
       <FlatList
+        onViewableItemsChanged={onExperienceViewable}
+        viewabilityConfig={experienceViewability}
         data={slides}
         decelerationRate="fast"
         disableIntervalMomentum

@@ -38,6 +38,7 @@ import { AuthProvider } from '@/features/auth/auth-provider';
 import { LinkDispatcherProvider } from '@/features/auth/link-dispatcher-provider';
 import { PlaybackProvider } from '@/features/playback/playback-provider';
 import { PlaybackPreferencesProvider } from '@/features/playback/playback-preferences-provider';
+import { ExperienceProvider } from '@/core/experience/experience-provider';
 import { NonFeedNowPlaying } from '@/features/playback/non-feed-now-playing';
 
 void SplashScreen.preventAutoHideAsync();
@@ -101,6 +102,7 @@ export default function RootLayout() {
                   <OutboxProvider>
                     <PlaybackPreferencesProvider>
                       <PlaybackProvider>
+                        <ExperienceProvider />
                         <StatusBar style="auto" />
                         <Stack screenOptions={{ headerShown: false }}>
                           <Stack.Screen

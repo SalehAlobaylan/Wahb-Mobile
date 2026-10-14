@@ -2,7 +2,7 @@
 
 ## Principles
 
-1. Build native iOS and Android behavior, not a wrapped copy of the website.
+1. Wahb-Mobile is the primary end-user interface. Wahb-Platform preview mirrors its features. Implement every Web product/reliability change here using appropriate native owners; follow the [canonical product rule](../../docs/PRD.md#core-1-consumer-app-wahb-mobile-leads-wahb-platform-follows).
 2. Preserve the CMS and IAM contracts and service boundaries from Wahb.
 3. Keep playback, feed order, identity, and offline state explicit and
    deterministic.
@@ -357,3 +357,12 @@ Source-map upload credentials, if introduced, are build-time secrets and must
 never be committed or exposed through `EXPO_PUBLIC_*` variables. Configure
 `SENTRY_ORG`, `SENTRY_PROJECT`, and secret `SENTRY_AUTH_TOKEN` only in the
 build environment when source-map and native-symbol upload is enabled.
+
+## Real User Experience ownership
+
+`src/core/experience` observes foreground UI and the existing playback provider.
+It owns ephemeral, privacy-filtered journey evidence and bounded memory-only
+telemetry delivery. It does not own players, feed state, authentication, durable
+interaction outbox, or business writes. CMS owns native admission, tenant scope,
+collection policy and client-separated reliability verdicts; Console selects
+iOS/Android/Web preview evidence. See [current behavior and qualification status](../../docs/mobile.md#real-user-experience).

@@ -1,8 +1,10 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Image } from 'expo-image';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { emitEvent } from '@/core/experience/collector';
+import { getExperienceSurface } from '@/core/experience/lifecycle';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import i18n from '@/core/i18n';
 import { colors, fontFamilies, radii, spacing } from '@/design/tokens';
@@ -27,6 +29,14 @@ export class AppErrorBoundary extends Component<
 
   override componentDidCatch(error: Error, _info: ErrorInfo): void {
     captureException('app_error_boundary', error);
+    emitEvent({
+      event_type: 'client_failure',
+      surface: getExperienceSurface(),
+      measurements: {
+        visible: AppState.currentState === 'active',
+        failure_class: 'unknown',
+      },
+    });
   }
 
   private retry = () => {

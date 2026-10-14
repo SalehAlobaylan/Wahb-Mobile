@@ -7,6 +7,7 @@ import {
   captureException,
 } from '@/core/diagnostics/diagnostics';
 import { getInstallationId } from '@/core/identity/installation-id';
+import { startExperiencePagination } from '@/core/experience/use-feed-experience';
 import { useAuth } from '@/features/auth/auth-provider';
 import { readLanguagePreferences } from '@/features/settings/language-preferences';
 
@@ -139,6 +140,10 @@ export function usePodsSession(duration?: PodsDurationPreference) {
       return false;
     }
     paginationInFlight.current = true;
+    const measurement = startExperiencePagination(
+      'pods',
+      current.items.map((entry) => entry.item.id),
+    );
     try {
       const page = await clients.cms.getPodsSessionPage({
         installationId,
@@ -152,12 +157,14 @@ export function usePodsSession(duration?: PodsDurationPreference) {
         sessionScope,
         page,
       );
+      if (page.items.length === 0) measurement.end();
       if (updated) {
         queryClient.setQueryData(['pods-session', sessionScope], updated);
         return true;
       }
       return false;
     } catch (error) {
+      measurement.failed();
       captureException('pods_session_page_failed', error);
       return false;
     } finally {

@@ -29,6 +29,10 @@ import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 
 import { HttpError, type ArticleContent } from '@/core/api';
+import {
+  takeReaderIntent,
+  releaseReaderIntent,
+} from '@/core/experience/journeys';
 import { captureException } from '@/core/diagnostics/diagnostics';
 import { hapticSuccess } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
@@ -158,10 +162,26 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   const scope = installationQuery.data
     ? toIdentityScope(installationQuery.data, subject?.id)
     : null;
+  const readerExperience = useRef<ReturnType<typeof takeReaderIntent> | null>(
+    null,
+  );
+  const readerOwner = useRef<object | null>(null);
+  useEffect(() => {
+    if (!id) return;
+    const owner = {};
+    readerOwner.current = owner;
+    readerExperience.current = takeReaderIntent(id);
+    return () =>
+      queueMicrotask(() => {
+        if (readerOwner.current === owner && readerExperience.current)
+          releaseReaderIntent(id, readerExperience.current);
+      });
+  }, [id]);
   const query = useQuery<ReaderDocument>({
     queryKey: ['article', scope, id],
     enabled: Boolean(id && scope),
     queryFn: async () => {
+      readerExperience.current = takeReaderIntent(id!);
       const cached = await loadArticleSnapshot(db, scope!, id!);
       const readerPosition = await loadReaderPosition(db, scope!, id!);
       try {
@@ -186,6 +206,11 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
     staleTime: 0,
   });
 
+  useEffect(() => {
+    if (query.isError) readerExperience.current?.failed('network');
+    if (query.data?.source === 'offline-cache')
+      readerExperience.current?.cancel();
+  }, [query.isError, query.data?.source]);
   useEffect(() => {
     if (!query.data) {
       return;
@@ -323,6 +348,15 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
   }
 
   const { article } = query.data;
+  const completeReader = () => {
+    const full = article.translated_body_text || article.body_text;
+    const short = article.format === 'TWEET' || article.format === 'COMMENT';
+    if (
+      query.data?.source === 'network' &&
+      (full?.trim() || (short && article.excerpt?.trim()))
+    )
+      readerExperience.current?.ready();
+  };
   const isBookmarked =
     bookmarkOverride?.contentId === article.id
       ? bookmarkOverride.value
@@ -419,6 +453,7 @@ export function ArticleReaderScreen({ id }: { id?: string }) {
         </View>
       </View>
       <ScrollView
+        onLayout={completeReader}
         contentContainerStyle={[
           styles.content,
           { paddingBottom: layoutMetrics.pageBottom + spacing.xl },

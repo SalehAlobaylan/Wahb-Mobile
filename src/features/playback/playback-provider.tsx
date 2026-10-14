@@ -51,6 +51,7 @@ import {
   remotePlaybackSourceResolver,
   retryDelayMs,
 } from './source-resolver';
+import { createPlaybackExperience } from '@/core/experience/playback-experience';
 import { createUpNextCountdown } from './up-next-countdown';
 
 type StartPlaybackOptions = {
@@ -124,6 +125,16 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     defaultExperiencePreferences.autoplayEnabled,
   );
   const operation = useRef(0);
+  const experience = useRef<ReturnType<typeof createPlaybackExperience> | null>(
+    null,
+  );
+  useEffect(() => {
+    experience.current ??= createPlaybackExperience();
+    return () => {
+      experience.current?.dispose();
+      experience.current = null;
+    };
+  }, []);
   const videoPlayerRef = useRef(videoPlayer);
   const audioPlayerRef = useRef(audioPlayer);
   const rateDefaultsRef = useRef(rateDefaults);
@@ -190,6 +201,30 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         : false;
 
   useEffect(() => {
+    const position =
+      snapshot.kind === 'video'
+        ? videoTimeUpdate.currentTime
+        : audioStatus.currentTime;
+    experience.current?.observe(
+      position,
+      phase === 'playing',
+      isBuffering,
+      snapshot.kind === 'audio'
+        ? audioStatus.didJustFinish
+        : snapshot.didReachEnd,
+      phase === 'failed',
+    );
+  }, [
+    phase,
+    isBuffering,
+    snapshot.kind,
+    snapshot.didReachEnd,
+    videoTimeUpdate.currentTime,
+    audioStatus.currentTime,
+    audioStatus.didJustFinish,
+  ]);
+
+  useEffect(() => {
     if (phase === lastDiagnosticPhase.current) return;
     lastDiagnosticPhase.current = phase;
     if (phase === 'playing') {
@@ -236,6 +271,15 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setUpNextSeconds(null);
       const request = ++operation.current;
       startRequestedAt.current = performance.now();
+      if (options.autoplay ?? autoplayEnabled)
+        (experience.current ??= createPlaybackExperience()).attempt(
+          item.id,
+          item.playback.type,
+          options.positionSeconds ?? 0,
+          (options.candidateStartIndex ?? 0) > 0 ||
+            Boolean(options.metadataRefreshAttempted),
+        );
+      else experience.current?.pause();
       const kind = resolvePlaybackKind(item.playback);
       const rate = rateDefaultsRef.current[playbackRateClassFor(item)];
       const positionSeconds = options.positionSeconds ?? 0;
@@ -274,6 +318,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         sourceIndex += 1
       ) {
         const source = sources[sourceIndex]!;
+        if (sourceIndex > 0) experience.current?.fallback(source.type);
         if (source.stage === 'fallback' && fallbackStartedAt.current === null) {
           fallbackStartedAt.current = performance.now();
           captureDiagnostic('playback_fallback_start', {
@@ -466,6 +511,14 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [start]);
 
   const play = useCallback(() => {
+    if (snapshot.item)
+      (experience.current ??= createPlaybackExperience()).attempt(
+        snapshot.item.id,
+        snapshot.item.playback.type,
+        snapshot.kind === 'video'
+          ? videoPlayerRef.current.currentTime
+          : audioStatus.currentTime,
+      );
     upNextCountdown.current.cancel();
     upNextRequest.current = null;
     upNextKey.current = null;
@@ -476,7 +529,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     } else if (snapshot.kind === 'audio') {
       audioPlayerRef.current.play();
     }
-  }, [snapshot.kind]);
+  }, [snapshot.kind, snapshot.item, audioStatus.currentTime]);
 
   const failOverFromRuntimeError = useCallback(
     (kind: 'audio' | 'video') => {
@@ -518,6 +571,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   }, [audioStatus.error, failOverFromRuntimeError]);
 
   const pause = useCallback(() => {
+    experience.current?.pause();
     upNextCountdown.current.cancel();
     upNextRequest.current = null;
     upNextKey.current = null;
@@ -531,6 +585,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const seekBy = useCallback(
     async (seconds: number) => {
+      experience.current?.position(
+        (snapshot.kind === 'video'
+          ? videoPlayerRef.current.currentTime
+          : audioStatus.currentTime) + seconds,
+      );
       if (seconds < 0) {
         upNextCountdown.current.cancel();
         upNextRequest.current = null;
@@ -550,6 +609,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const seekTo = useCallback(
     async (seconds: number) => {
+      experience.current?.position(seconds);
       upNextCountdown.current.cancel();
       upNextRequest.current = null;
       upNextKey.current = null;
@@ -657,6 +717,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   const dismiss = useCallback(() => {
+    experience.current?.pause();
     cancelUpNext();
     ++operation.current;
     videoPlayerRef.current.pause();

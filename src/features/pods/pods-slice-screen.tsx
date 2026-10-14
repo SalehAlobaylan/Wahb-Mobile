@@ -30,6 +30,7 @@ import {
   Modal,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
+  type ViewToken,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -111,6 +112,11 @@ import {
   spacing,
   typeScale,
 } from '@/design/tokens';
+import {
+  useFeedExperience,
+  commitExperienceUnits,
+  experienceBoundaryReached,
+} from '@/core/experience/use-feed-experience';
 import { PodsFeedChrome } from '@/components/navigation/feed-chrome';
 import { fontForText, useWahbTypography } from '@/design/typography';
 
@@ -219,6 +225,43 @@ export function PodsSliceScreen() {
   } | null>(null);
   const { font } = useWahbTypography();
   const session = sessionQuery.data;
+  const experienceUnits = useMemo(
+    () => session?.items.map((entry) => entry.item.id) || [],
+    [session],
+  );
+  const { rendered: experienceRendered, requested: experienceRequested } =
+    useFeedExperience({
+      surface: 'pods',
+      key: String(duration ?? 'all'),
+      active: sceneFocused,
+      error: identityQuery.isError || sessionQuery.isError,
+      empty: sessionQuery.isSuccess && sessionQuery.data.items.length === 0,
+      offline: session?.isOfflineSnapshot,
+      unitIds: experienceUnits,
+    });
+  const experienceViewability = useMemo(
+    () => ({ itemVisiblePercentThreshold: 50 }),
+    [],
+  );
+  const onExperienceViewable = useCallback(
+    ({
+      viewableItems,
+    }: {
+      viewableItems: ViewToken<FrozenPodsSession['items'][number]>[];
+    }) => {
+      const first = viewableItems.find((token) => token.isViewable);
+      if (first) experienceRendered(first.item.item.id);
+    },
+    [experienceRendered],
+  );
+  useEffect(() => {
+    if (sceneFocused && session)
+      commitExperienceUnits(
+        'pods',
+        session.items.map((entry) => entry.item.id),
+      );
+  }, [sceneFocused, session]);
+
   const isOfflineSnapshot = session?.isOfflineSnapshot === true;
   const [connectionRequiredForId, setConnectionRequiredForId] = useState<
     string | null
@@ -800,7 +843,7 @@ export function PodsSliceScreen() {
     setPendingAutoplay(null);
     setIsRefreshing(true);
     try {
-      await refreshSession();
+      await experienceRequested(refreshSession);
       setHasNewContent(false);
       hapticSuccess();
     } catch (error) {
@@ -809,7 +852,7 @@ export function PodsSliceScreen() {
     } finally {
       setIsRefreshing(false);
     }
-  }, [playback, refreshSession]);
+  }, [playback, refreshSession, experienceRequested]);
 
   const checkForNewContent = useCallback(async () => {
     try {
@@ -1135,7 +1178,7 @@ export function PodsSliceScreen() {
     return (
       <PodsFailure
         offline={sessionQuery.error instanceof NetworkError}
-        onRetry={() => void sessionQuery.refetch()}
+        onRetry={() => void experienceRequested(() => sessionQuery.refetch())}
       />
     );
   }
@@ -1152,6 +1195,8 @@ export function PodsSliceScreen() {
   return (
     <View onLayout={handlePagerLayout} style={styles.safeArea}>
       <FlatList
+        onViewableItemsChanged={onExperienceViewable}
+        viewabilityConfig={experienceViewability}
         data={session.items}
         decelerationRate="fast"
         disableIntervalMomentum
@@ -1169,6 +1214,12 @@ export function PodsSliceScreen() {
         keyExtractor={(entry) => `${session.id}:${entry.item.id}`}
         maxToRenderPerBatch={3}
         onMomentumScrollEnd={(event) => {
+          experienceBoundaryReached(
+            'pods',
+            pageHeight > 0 &&
+              event.nativeEvent.contentOffset.y >=
+                (session.items.length - 1) * pageHeight,
+          );
           setPagerDragging(false);
           setSwipeCardsPerSecond(0);
           if (pageHeight <= 0) {
@@ -1199,6 +1250,10 @@ export function PodsSliceScreen() {
             pagerHasInteracted.current &&
             position >= session.items.length - 2
           ) {
+            experienceBoundaryReached(
+              'pods',
+              position >= session.items.length - 1,
+            );
             void fetchNextPage();
           }
         }}
@@ -1231,6 +1286,9 @@ export function PodsSliceScreen() {
           <Pressable
             accessible={false}
             disabled={index !== position}
+            onLayout={() => {
+              if (index === position) experienceRendered(page.item.id);
+            }}
             onPress={() => dispatchIntent('toggle-playback')}
             testID={index === position ? 'pods-playback-toggle' : undefined}
             style={[styles.page, { height: pageHeight }]}
