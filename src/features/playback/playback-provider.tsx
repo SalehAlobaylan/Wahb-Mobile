@@ -1,3 +1,6 @@
+import { useAudioErrorRecovery } from './use-audio-error-recovery';
+import { useLockScreenPlayback } from './use-lock-screen-playback';
+import { usePlaybackConsumption } from './use-playback-consumption';
 import {
   setAudioModeAsync,
   useAudioPlayer,
@@ -200,6 +203,36 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         ? audioStatus.isBuffering
         : false;
 
+  useLockScreenPlayback({
+    audio: audioPlayer,
+    video: videoPlayerRef,
+    item: snapshot.item,
+    kind: snapshot.kind,
+    ready:
+      snapshot.phase !== 'loading' &&
+      snapshot.phase !== 'failed' &&
+      (snapshot.kind === 'audio'
+        ? audioStatus.isLoaded
+        : videoPlayer.status === 'readyToPlay'),
+    playing: phase === 'playing',
+  });
+
+  const consumption = usePlaybackConsumption({
+    itemId: snapshot.item?.id ?? null,
+    position:
+      snapshot.kind === 'video'
+        ? videoTimeUpdate.currentTime
+        : audioStatus.currentTime,
+    duration:
+      snapshot.kind === 'video' ? videoPlayer.duration : audioStatus.duration,
+    playing: phase === 'playing' && !isBuffering,
+    ended:
+      snapshot.kind === 'audio'
+        ? audioStatus.didJustFinish
+        : snapshot.didReachEnd,
+    rate: snapshot.rate,
+  });
+
   useEffect(() => {
     const position =
       snapshot.kind === 'video'
@@ -283,6 +316,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       const kind = resolvePlaybackKind(item.playback);
       const rate = rateDefaultsRef.current[playbackRateClassFor(item)];
       const positionSeconds = options.positionSeconds ?? 0;
+      consumption.handoff(item.id, positionSeconds);
       const autoplay = options.autoplay ?? autoplayEnabled;
       const candidateStartIndex = options.candidateStartIndex ?? 0;
       if (candidateStartIndex === 0) {
@@ -504,7 +538,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           : current,
       );
     },
-    [autoplayEnabled, clients.cms, networkCost],
+    [autoplayEnabled, clients.cms, networkCost, consumption],
   );
   useEffect(() => {
     startRef.current = start;
@@ -534,7 +568,13 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const failOverFromRuntimeError = useCallback(
     (kind: 'audio' | 'video') => {
       const item = snapshot.item;
-      if (!item || snapshot.kind !== kind) {
+      if (
+        !item ||
+        snapshot.kind !== kind ||
+        snapshot.phase === 'loading' ||
+        snapshot.phase === 'failed' ||
+        snapshot.sourceStage === null
+      ) {
         return;
       }
       const failureKey = `${operation.current}:${activeSourceIndex.current}`;
@@ -564,11 +604,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     }
   });
 
-  useEffect(() => {
-    if (audioStatus.error) {
-      failOverFromRuntimeError('audio');
-    }
-  }, [audioStatus.error, failOverFromRuntimeError]);
+  useAudioErrorRecovery(audioStatus.error, () => {
+    failOverFromRuntimeError('audio');
+  });
 
   const pause = useCallback(() => {
     experience.current?.pause();
@@ -585,6 +623,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const seekBy = useCallback(
     async (seconds: number) => {
+      consumption.seek(
+        (snapshot.kind === 'video'
+          ? videoPlayerRef.current.currentTime
+          : audioStatus.currentTime) + seconds,
+      );
       experience.current?.position(
         (snapshot.kind === 'video'
           ? videoPlayerRef.current.currentTime
@@ -604,11 +647,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [audioStatus.currentTime, snapshot.kind],
+    [audioStatus.currentTime, snapshot.kind, consumption],
   );
 
   const seekTo = useCallback(
     async (seconds: number) => {
+      consumption.seek(seconds);
       experience.current?.position(seconds);
       upNextCountdown.current.cancel();
       upNextRequest.current = null;
@@ -627,7 +671,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         await audioPlayerRef.current.seekTo(target);
       }
     },
-    [audioStatus.duration, snapshot.kind],
+    [audioStatus.duration, snapshot.kind, consumption],
   );
 
   const setTemporaryRate = useCallback(
@@ -717,6 +761,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   );
 
   const dismiss = useCallback(() => {
+    consumption.flush();
     experience.current?.pause();
     cancelUpNext();
     ++operation.current;
@@ -725,7 +770,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     audioPlayerRef.current.pause();
     audioPlayerRef.current.clearLockScreenControls();
     setSnapshot(createInitialPlaybackSnapshot());
-  }, [cancelUpNext]);
+  }, [cancelUpNext, consumption]);
 
   useEffect(
     () => () => {

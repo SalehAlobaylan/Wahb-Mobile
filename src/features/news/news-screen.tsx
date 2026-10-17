@@ -360,7 +360,14 @@ export function NewsScreen() {
         await outbox.enqueue({
           contentId: leadId,
           type: 'view',
-          metadata: { surface: 'news', story_id: storyId },
+          metadata: {
+            surface: 'news',
+            story_id: storyId,
+            economics_version: 1,
+            economics_client: 'mobile',
+            economics_observation: 'story_open_v1',
+            economics_observed_at: new Date().toISOString(),
+          },
         });
       } catch (error) {
         captureException('news_history_enqueue_failed', error);

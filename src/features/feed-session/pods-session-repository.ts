@@ -586,6 +586,7 @@ export async function recordPodsConsumption(
   actualPlayedSeconds: number,
   furthestPositionSeconds: number,
   now = new Date(),
+  economicsSegmentId?: string,
 ): Promise<boolean> {
   let recorded = false;
   await db.withExclusiveTransactionAsync(async (transaction) => {
@@ -615,6 +616,15 @@ export async function recordPodsConsumption(
         type: classification === 'completed' ? 'complete' : classification,
         metadata: {
           surface: 'pods',
+          ...(economicsSegmentId
+            ? {
+                economics_version: 1,
+                economics_client: 'mobile',
+                economics_segment_id: economicsSegmentId,
+                economics_observed_at: now.toISOString(),
+                economics_observation: 'media_position_seconds_v1',
+              }
+            : {}),
           consumption_contract_version: 1,
           actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
           furthest_position_seconds: Math.max(
@@ -650,6 +660,7 @@ export async function recordPodsProgress(
   positionSeconds: number,
   actualPlayedSeconds: number,
   now = new Date(),
+  economicsSegmentId?: string,
 ): Promise<boolean> {
   const normalizedPosition = Math.max(0, Math.floor(positionSeconds));
   if (normalizedPosition < 30) {
@@ -681,6 +692,15 @@ export async function recordPodsProgress(
         type: 'progress',
         metadata: {
           surface: 'pods',
+          ...(economicsSegmentId
+            ? {
+                economics_version: 1,
+                economics_client: 'mobile',
+                economics_segment_id: economicsSegmentId,
+                economics_observed_at: now.toISOString(),
+                economics_observation: 'media_position_seconds_v1',
+              }
+            : {}),
           position_seconds: normalizedPosition,
           actual_played_seconds: Math.max(0, Math.floor(actualPlayedSeconds)),
         },

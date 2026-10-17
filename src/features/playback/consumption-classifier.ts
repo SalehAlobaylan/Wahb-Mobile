@@ -43,7 +43,7 @@ export function classifyConsumption(
   durationSeconds: number,
   reachedEnd = false,
 ): ConsumptionClassification | null {
-  if (durationSeconds <= 0) {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
     return null;
   }
   const meaningfulThreshold = Math.min(30, durationSeconds * 0.1);

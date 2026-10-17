@@ -59,21 +59,13 @@ import { useReducedMotion } from '@/core/ui/use-reduced-motion';
 import { useAuth } from '@/features/auth/auth-provider';
 import type { FrozenPodsSession } from '@/features/feed-session/pods-session-repository';
 import {
-  recordPodsConsumption,
   recordPodsExposure,
-  recordPodsProgress,
   updatePodsSessionPosition,
 } from '@/features/feed-session/pods-session-repository';
 import {
   type PodsDurationPreference,
   usePodsSession,
 } from '@/features/feed-session/use-pods-session';
-import {
-  classifyConsumption,
-  createConsumptionState,
-  observeConsumption,
-  type ConsumptionState,
-} from '@/features/playback/consumption-classifier';
 import { usePlaybackController } from '@/features/playback/playback-provider';
 import { usePlaybackPreferences } from '@/features/playback/playback-preferences-provider';
 import {
@@ -165,10 +157,6 @@ export function PodsSliceScreen() {
     }, []),
   );
   const { clients, subject } = useAuth();
-  const consumption = useRef<{
-    key: string;
-    state: ConsumptionState;
-  } | null>(null);
   const lastPositionWrite = useRef<{ key: string; atMs: number } | null>(null);
   const currentPosition = useRef<{
     sessionId: string | null;
@@ -457,48 +445,6 @@ export function PodsSliceScreen() {
     });
   }, [isOfflineSnapshot, item, session]);
 
-  const queueConsumption = useCallback(
-    async (
-      targetSessionId: string,
-      targetPosition: number,
-      targetIdentityScope: string,
-      state: ConsumptionState,
-      durationSeconds: number,
-      terminal = false,
-    ) => {
-      const classification = classifyConsumption(state, durationSeconds);
-      if (!classification) {
-        return;
-      }
-      // A fresh item starts below the quick-skip threshold. Do not turn that
-      // transient state into a negative delivery signal while the person is
-      // still listening; quick/sample become final evidence when they leave.
-      if (
-        !terminal &&
-        (classification === 'quick_skip' || classification === 'sampled')
-      ) {
-        return;
-      }
-      try {
-        const recorded = await recordPodsConsumption(
-          db,
-          targetSessionId,
-          targetPosition,
-          targetIdentityScope,
-          classification,
-          state.accumulatedPlayedSeconds,
-          state.furthestPositionSeconds,
-        );
-        if (recorded) {
-          await outbox.flush();
-        }
-      } catch (error) {
-        captureException('pods_consumption_queue_failed', error);
-      }
-    },
-    [db, outbox],
-  );
-
   const persistCurrentPosition = useCallback(async () => {
     const current = currentPosition.current;
     if (!current.sessionId) {
@@ -549,86 +495,10 @@ export function PodsSliceScreen() {
   }, [db, identityScope, item, outbox, position, session]);
 
   useEffect(() => {
-    if (!session || !item || !identityScope || !isCurrent) {
-      return;
-    }
-    const key = `${session.id}:${position}:${item.id}`;
-    if (consumption.current?.key !== key) {
-      consumption.current = {
-        key,
-        state: createConsumptionState(playback.currentTimeSeconds),
-      };
-      return;
-    }
-    const next = observeConsumption(
-      consumption.current.state,
-      playback.currentTimeSeconds,
-      playback.phase === 'playing',
-    );
-    consumption.current = { key, state: next };
-    void queueConsumption(
-      session.id,
-      position,
-      identityScope,
-      next,
-      playback.durationSeconds || item.duration_sec,
-    );
-  }, [
-    identityScope,
-    isCurrent,
-    item,
-    playback.currentTimeSeconds,
-    playback.durationSeconds,
-    playback.phase,
-    position,
-    queueConsumption,
-    session,
-  ]);
-
-  useEffect(() => {
-    if (
-      !session ||
-      !item ||
-      !identityScope ||
-      !isCurrent ||
-      playback.phase !== 'playing'
-    ) {
-      return;
-    }
-    void recordPodsProgress(
-      db,
-      session.id,
-      position,
-      identityScope,
-      playback.currentTimeSeconds,
-      consumption.current?.state.accumulatedPlayedSeconds ?? 0,
-    )
-      .then((recorded) => {
-        if (recorded) {
-          return outbox.flush();
-        }
-        return undefined;
-      })
-      .catch((error: unknown) =>
-        captureException('pods_progress_queue_failed', error),
-      );
-  }, [
-    db,
-    identityScope,
-    isCurrent,
-    item,
-    outbox,
-    playback.currentTimeSeconds,
-    playback.phase,
-    position,
-    session,
-  ]);
-
-  useEffect(() => {
     if (!session || !item || !isCurrent || playback.phase !== 'playing') {
       return;
     }
-    const key = `${session.id}:${position}:${item.id}`;
+    const key = `${identityScope}:${session.id}:${position}:${item.id}`;
     const nowMs = Date.now();
     const previous = lastPositionWrite.current;
     if (previous?.key === key && nowMs - previous.atMs < 5_000) {
@@ -637,6 +507,7 @@ export function PodsSliceScreen() {
     lastPositionWrite.current = { key, atMs: nowMs };
     void persistCurrentPosition();
   }, [
+    identityScope,
     isCurrent,
     item,
     persistCurrentPosition,
@@ -669,16 +540,6 @@ export function PodsSliceScreen() {
         return;
       }
 
-      if (session && identityScope && consumption.current) {
-        void queueConsumption(
-          session.id,
-          position,
-          identityScope,
-          consumption.current.state,
-          playback.durationSeconds || item?.duration_sec || 0,
-          true,
-        );
-      }
       playback.pause();
       setSelection({ sessionId: session.id, position: nextPosition });
       if (options.autoplay) {
@@ -701,11 +562,8 @@ export function PodsSliceScreen() {
     [
       db,
       fetchNextPage,
-      identityScope,
-      item?.duration_sec,
       playback,
       position,
-      queueConsumption,
       session,
     ],
   );
@@ -1060,16 +918,6 @@ export function PodsSliceScreen() {
       ) {
         return false;
       }
-      if (identityScope && consumption.current) {
-        void queueConsumption(
-          session.id,
-          position,
-          identityScope,
-          consumption.current.state,
-          playback.durationSeconds || item?.duration_sec || 0,
-          true,
-        );
-      }
       setSelection({ sessionId: session.id, position: nextPosition });
       setPendingAutoplay(null);
       try {
@@ -1088,12 +936,8 @@ export function PodsSliceScreen() {
     },
     [
       db,
-      identityScope,
-      item?.duration_sec,
       playback.currentTimeSeconds,
-      playback.durationSeconds,
       position,
-      queueConsumption,
       session,
     ],
   );
