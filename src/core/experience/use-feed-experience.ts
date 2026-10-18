@@ -54,28 +54,41 @@ export function useFeedExperience(input: {
   empty: boolean;
   offline?: boolean;
   unitIds?: readonly string[];
+  feedSessionId?: string;
 }) {
   const [revision, setRevision] = useState(0);
   const awaitingRequest = useRef(false);
   const journey = useRef<ReturnType<typeof beginFeedLoad> | null>(null);
   const owner = useRef<object | null>(null);
-  const committed = useRef<string | null>(null);
+  const committed = useRef<{ id: string; feedSessionId?: string } | null>(null);
   const active = useRef(input.active);
   const eligibility = useRef({
     error: input.error,
     offline: input.offline,
     key: input.key,
     unitIds: input.unitIds,
+    feedSessionId: input.feedSessionId,
   });
   useLayoutEffect(() => {
-    if (eligibility.current.key !== input.key) committed.current = null;
+    if (
+      eligibility.current.key !== input.key ||
+      eligibility.current.feedSessionId !== input.feedSessionId
+    )
+      committed.current = null;
     eligibility.current = {
       error: input.error,
       offline: input.offline,
       key: input.key,
       unitIds: input.unitIds,
+      feedSessionId: input.feedSessionId,
     };
-  }, [input.error, input.offline, input.key, input.unitIds]);
+  }, [
+    input.error,
+    input.offline,
+    input.key,
+    input.unitIds,
+    input.feedSessionId,
+  ]);
   useLayoutEffect(() => {
     active.current = input.active;
   }, [input.active]);
@@ -97,9 +110,12 @@ export function useFeedExperience(input: {
       !eligibility.current.offline &&
       !eligibility.current.error &&
       (!eligibility.current.unitIds ||
-        eligibility.current.unitIds.includes(committed.current))
+        eligibility.current.unitIds.includes(committed.current.id))
     )
-      journey.current.rendered(committed.current);
+      journey.current.rendered(
+        committed.current.id,
+        committed.current.feedSessionId,
+      );
     return () =>
       queueMicrotask(() => {
         if (owner.current === current) {
@@ -119,10 +135,13 @@ export function useFeedExperience(input: {
     else if (input.empty) journey.current?.empty();
     else if (
       committed.current &&
-      (!input.unitIds || input.unitIds.includes(committed.current)) &&
+      (!input.unitIds || input.unitIds.includes(committed.current.id)) &&
       isForeground()
     )
-      journey.current?.rendered(committed.current);
+      journey.current?.rendered(
+        committed.current.id,
+        committed.current.feedSessionId,
+      );
   }, [
     input.active,
     input.error,
@@ -131,8 +150,9 @@ export function useFeedExperience(input: {
     input.unitIds,
     revision,
   ]);
-  const rendered = useCallback((id: string) => {
-    committed.current = id;
+  const rendered = useCallback((id: string, feedSessionId?: string) => {
+    if (feedSessionId !== eligibility.current.feedSessionId) return;
+    committed.current = { id, feedSessionId };
     if (
       active.current &&
       !awaitingRequest.current &&
@@ -140,7 +160,7 @@ export function useFeedExperience(input: {
       !eligibility.current.offline &&
       !eligibility.current.error
     )
-      journey.current?.rendered(id);
+      journey.current?.rendered(id, feedSessionId);
   }, []);
   const requested = useCallback(
     async <T>(operation: () => Promise<T>): Promise<T> => {

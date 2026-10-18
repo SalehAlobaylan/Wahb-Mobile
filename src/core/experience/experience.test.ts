@@ -128,6 +128,7 @@ it('uses ticket-bound ephemeral process identity and quiet server-off delivery',
     phase: 'feed',
     outcome: 'failed',
     surface: 'pods',
+    feed_session_id: '00000000-0000-4000-8000-000000000002',
   });
   for (let step = 0; step < 20; step++) await Promise.resolve();
   const admissionCall = transport.mock.calls[0];
@@ -139,6 +140,7 @@ it('uses ticket-bound ephemeral process identity and quiet server-off delivery',
     schema_version: 3,
     session_id: collector.inspect().session,
     page_load_id: collector.inspect().page,
+    feed_session_id: '00000000-0000-4000-8000-000000000002',
     client: { platform: 'ios' },
   });
   collector.dispose();

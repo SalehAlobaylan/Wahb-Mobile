@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 import { useSQLiteContext } from 'expo-sqlite';
 
 import {
@@ -70,12 +70,25 @@ export function usePodsSession(duration?: PodsDurationPreference) {
     contentLanguage,
     duration,
   );
+  const refreshSequence = useRef(0);
+  const commitQueue = useRef<Promise<unknown>>(Promise.resolve());
+  useLayoutEffect(
+    () => () => {
+      refreshSequence.current += 1;
+    },
+    [sessionScope],
+  );
   const sessionQuery = useQuery<FrozenPodsSession>({
     queryKey: ['pods-session', sessionScope],
     enabled: Boolean(
       installationId && sessionScope && !languageQuery.isPending,
     ),
+    staleTime: Infinity,
+    refetchOnMount: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
     queryFn: async ({ signal }) => {
+      const sequence = refreshSequence.current;
       if (!installationId || !sessionScope) {
         throw new Error('Installation identity is unavailable.');
       }
@@ -96,13 +109,17 @@ export function usePodsSession(duration?: PodsDurationPreference) {
           duration,
           signal,
         });
-        return materializePodsSession(
+        const session = await materializePodsSession(
           db,
           sessionScope,
           page,
           page.serverSessionId,
           page.expiresAt,
+          new Date(),
+          () => !signal.aborted && sequence === refreshSequence.current,
         );
+        if (!session) throw new Error('Pods session was superseded.');
+        return session;
       } catch (error) {
         const recovery = await loadRecoverablePodsSession(db, sessionScope);
         if (recovery) {
@@ -158,7 +175,13 @@ export function usePodsSession(duration?: PodsDurationPreference) {
         page,
       );
       if (page.items.length === 0) measurement.end();
-      if (updated) {
+      if (
+        updated &&
+        queryClient.getQueryData<FrozenPodsSession>([
+          'pods-session',
+          sessionScope,
+        ])?.id === current.id
+      ) {
         queryClient.setQueryData(['pods-session', sessionScope], updated);
         return true;
       }
@@ -181,8 +204,10 @@ export function usePodsSession(duration?: PodsDurationPreference) {
 
   const refreshSession = useCallback(async () => {
     if (!installationId || !sessionScope) {
-      return;
+      return false;
     }
+    const sequence = ++refreshSequence.current;
+    const canCommit = () => sequence === refreshSequence.current;
     // Materialization expires the prior session only after this request has
     // succeeded, so a failed refresh leaves the current frozen session intact.
     const page = await clients.cms.createPodsSession({
@@ -191,14 +216,33 @@ export function usePodsSession(duration?: PodsDurationPreference) {
       contentLanguage,
       duration,
     });
-    const updated = await materializePodsSession(
-      db,
-      sessionScope,
-      page,
-      page.serverSessionId,
-      page.expiresAt,
-    );
+    if (!canCommit()) return false;
+    await queryClient.cancelQueries({
+      queryKey: ['pods-session', sessionScope],
+      exact: true,
+    });
+    if (!canCommit()) return false;
+    // SQLite replacement and the query swap share one ordered commit lane.
+    // Recheck inside the transaction as well as after the network response.
+    const commit = commitQueue.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (!canCommit()) return null;
+        return materializePodsSession(
+          db,
+          sessionScope,
+          page,
+          page.serverSessionId,
+          page.expiresAt,
+          new Date(),
+          canCommit,
+        );
+      });
+    commitQueue.current = commit;
+    const updated = await commit;
+    if (!updated || !canCommit()) return false;
     queryClient.setQueryData(['pods-session', sessionScope], updated);
+    return true;
   }, [
     clients.cms,
     contentLanguage,
@@ -224,12 +268,19 @@ export function usePodsSession(duration?: PodsDurationPreference) {
       duration,
       contentLanguage,
     });
-    return response.hasNewContent;
+    return (
+      queryClient.getQueryData<FrozenPodsSession>([
+        'pods-session',
+        sessionScope,
+      ])?.id === current.id && response.hasNewContent
+    );
   }, [
     clients.cms,
     contentLanguage,
     duration,
     installationId,
+    queryClient,
+    sessionScope,
     sessionQuery.data,
   ]);
 

@@ -307,7 +307,8 @@ export async function materializePodsSession(
   serverSessionId: string | null,
   expiresAt: string,
   now = new Date(),
-): Promise<FrozenPodsSession> {
+  canCommit: () => boolean = () => true,
+): Promise<FrozenPodsSession | null> {
   const sessionId = Crypto.randomUUID();
   const createdAt = nowIso(now);
   const localExpiresAt = nowIso(createSessionExpiry(now));
@@ -334,41 +335,56 @@ export async function materializePodsSession(
     (item) => !hiddenIds.has(item.id) && !tombstones.has(item.id),
   );
 
-  await db.withExclusiveTransactionAsync(async (transaction) => {
-    await transaction.runAsync(
-      `UPDATE feed_sessions
+  let committed = false;
+  const superseded = new Error('Pods replacement was superseded.');
+  try {
+    await db.withExclusiveTransactionAsync(async (transaction) => {
+      // A superseded request may finish its network or SQLite reads after the
+      // replacement has already committed. Check at the actual write boundary.
+      if (!canCommit()) return;
+      await transaction.runAsync(
+        `UPDATE feed_sessions
           SET status = 'expired', updated_at = ?
         WHERE feed_type = 'pods'
           AND identity_scope = ?
-          AND status = 'active'`,
-      createdAt,
-      identityScope,
-    );
-    await transaction.runAsync(
-      `INSERT INTO feed_sessions
+          AND status IN ('active', 'exhausted')`,
+        createdAt,
+        identityScope,
+      );
+      await transaction.runAsync(
+        `INSERT INTO feed_sessions
         (id, feed_type, identity_scope, server_session_id, cursor, status, created_at, expires_at, active_position, updated_at)
        VALUES (?, 'pods', ?, ?, ?, 'active', ?, ?, 0, ?)`,
-      sessionId,
-      identityScope,
-      serverSessionId,
-      page.cursor,
-      createdAt,
-      effectiveExpiresAt,
-      createdAt,
-    );
+        sessionId,
+        identityScope,
+        serverSessionId,
+        page.cursor,
+        createdAt,
+        effectiveExpiresAt,
+        createdAt,
+      );
 
-    for (const [position, item] of visibleItems.entries()) {
-      await transaction.runAsync(
-        `INSERT INTO feed_session_items
+      for (const [position, item] of visibleItems.entries()) {
+        await transaction.runAsync(
+          `INSERT INTO feed_session_items
           (session_id, position, content_id, snapshot_json, playback_position_ms)
          VALUES (?, ?, ?, ?, 0)`,
-        sessionId,
-        position,
-        item.id,
-        JSON.stringify(item),
-      );
-    }
-  });
+          sessionId,
+          position,
+          item.id,
+          JSON.stringify(item),
+        );
+      }
+      // Reject a request superseded during the asynchronous writes too. The
+      // transaction rolls back, preserving the previous durable ordering.
+      if (!canCommit()) throw superseded;
+      committed = true;
+    });
+  } catch (error) {
+    if (error === superseded) return null;
+    throw error;
+  }
+  if (!committed) return null;
 
   return {
     id: sessionId,
@@ -500,10 +516,14 @@ async function recordSessionInteraction(
     kind === 'view' ? 'view_reported' : 'completion_reported';
   let recorded = false;
   await db.withExclusiveTransactionAsync(async (transaction) => {
-    const item = await transaction.getFirstAsync<{ content_id: string }>(
-      `SELECT content_id
-         FROM feed_session_items
-        WHERE session_id = ? AND position = ? AND ${reportedColumn} = 0`,
+    const item = await transaction.getFirstAsync<{
+      content_id: string;
+      server_session_id: string | null;
+    }>(
+      `SELECT entry.content_id, session.server_session_id
+         FROM feed_session_items entry
+         JOIN feed_sessions session ON session.id = entry.session_id
+        WHERE entry.session_id = ? AND entry.position = ? AND entry.${reportedColumn} = 0`,
       sessionId,
       position,
     );
@@ -513,7 +533,16 @@ async function recordSessionInteraction(
     await enqueueInteractionWithIds(
       transaction,
       identityScope,
-      { contentId: item.content_id, type: kind, metadata },
+      {
+        contentId: item.content_id,
+        type: kind,
+        metadata: {
+          ...metadata,
+          ...(item.server_session_id
+            ? { feed_session_id: item.server_session_id }
+            : {}),
+        },
+      },
       Crypto.randomUUID(),
       Crypto.randomUUID(),
       now,

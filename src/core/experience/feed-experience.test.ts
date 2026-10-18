@@ -75,6 +75,28 @@ it('pagination requires a newly committed unit and records starvation at the loa
   expect(terminals()).toHaveLength(1);
   experienceBoundaryReached('news', false);
 });
+it('correlates native render evidence to the frozen session and rejects an old pager callback', async () => {
+  const hook = await renderHook(() =>
+    useFeedExperience({
+      surface: 'pods',
+      key: 'all',
+      active: true,
+      error: false,
+      empty: false,
+      unitIds: ['one'],
+      feedSessionId: 'current-session',
+    }),
+  );
+  await act(() => hook.result.current.rendered('one', 'old-session'));
+  expect(terminals()).toHaveLength(0);
+  await act(() => hook.result.current.rendered('one', 'current-session'));
+  expect(terminals()[0]).toMatchObject({
+    content_id: 'one',
+    feed_session_id: 'current-session',
+    outcome: 'success',
+  });
+  await hook.unmount();
+});
 it('a stale pagination callback cannot discard the new request', () => {
   const old = startExperiencePagination('pods', ['old']);
   startExperiencePagination('pods', ['old']);

@@ -51,7 +51,7 @@ import {
   captureException,
   elapsedMilliseconds,
 } from '@/core/diagnostics/diagnostics';
-import { NetworkError } from '@/core/api';
+import { ApiError, NetworkError } from '@/core/api';
 import { hapticSuccess, hapticWarning } from '@/core/haptics/feedback';
 import { useOutbox } from '@/core/outbox/outbox-provider';
 import { useConnectivity } from '@/core/network/connectivity-provider';
@@ -111,6 +111,7 @@ import {
 } from '@/core/experience/use-feed-experience';
 import { PodsFeedChrome } from '@/components/navigation/feed-chrome';
 import { fontForText, useWahbTypography } from '@/design/typography';
+import { usePodsRefresh } from './use-pods-refresh';
 
 function formatDuration(durationSeconds: number): string {
   const minutes = Math.floor(durationSeconds / 60);
@@ -167,11 +168,14 @@ export function PodsSliceScreen() {
     sessionId: string;
     position: number;
   } | null>(null);
+  const [exposurePosition, setExposurePosition] = useState<{
+    sessionId: string;
+    position: number;
+  } | null>(null);
   const [pendingAutoplay, setPendingAutoplay] = useState<{
     sessionId: string;
     position: number;
   } | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasNewContent, setHasNewContent] = useState(false);
   const [displayMode, setDisplayMode] = useState<'fit' | 'fill' | 'transcript'>(
     'fit',
@@ -226,6 +230,7 @@ export function PodsSliceScreen() {
       empty: sessionQuery.isSuccess && sessionQuery.data.items.length === 0,
       offline: session?.isOfflineSnapshot,
       unitIds: experienceUnits,
+      feedSessionId: session?.serverSessionId ?? undefined,
     });
   const experienceViewability = useMemo(
     () => ({ itemVisiblePercentThreshold: 50 }),
@@ -238,9 +243,18 @@ export function PodsSliceScreen() {
       viewableItems: ViewToken<FrozenPodsSession['items'][number]>[];
     }) => {
       const first = viewableItems.find((token) => token.isViewable);
-      if (first) experienceRendered(first.item.item.id);
+      if (first)
+        experienceRendered(
+          first.item.item.id,
+          session?.serverSessionId ?? undefined,
+        );
+      setExposurePosition(
+        first && first.index !== null && session
+          ? { sessionId: session.id, position: first.index }
+          : null,
+      );
     },
-    [experienceRendered],
+    [experienceRendered, session],
   );
   useEffect(() => {
     if (sceneFocused && session)
@@ -466,9 +480,9 @@ export function PodsSliceScreen() {
     currentPosition.current = {
       sessionId: session?.id ?? null,
       position,
-      playbackPositionMs: Math.max(0, playback.currentTimeSeconds * 1_000),
+      playbackPositionMs: Math.max(0, playbackPositionSeconds * 1_000),
     };
-  }, [playback.currentTimeSeconds, position, session?.id]);
+  }, [playbackPositionSeconds, position, session?.id]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -480,10 +494,23 @@ export function PodsSliceScreen() {
   }, [persistCurrentPosition]);
 
   useEffect(() => {
-    if (!session || !item || !identityScope) {
+    if (
+      !session ||
+      !identityScope ||
+      !exposurePosition ||
+      exposurePosition.sessionId !== session.id ||
+      !sceneFocused ||
+      !adaptiveSignals.foreground ||
+      isOfflineSnapshot
+    ) {
       return;
     }
-    void recordPodsExposure(db, session.id, position, identityScope)
+    void recordPodsExposure(
+      db,
+      session.id,
+      exposurePosition.position,
+      identityScope,
+    )
       .then(async (recorded) => {
         if (recorded) {
           await outbox.flush();
@@ -492,7 +519,16 @@ export function PodsSliceScreen() {
       .catch((error: unknown) => {
         captureException('pods_exposure_queue_failed', error);
       });
-  }, [db, identityScope, item, outbox, position, session]);
+  }, [
+    db,
+    identityScope,
+    exposurePosition,
+    outbox,
+    session,
+    sceneFocused,
+    adaptiveSignals.foreground,
+    isOfflineSnapshot,
+  ]);
 
   useEffect(() => {
     if (!session || !item || !isCurrent || playback.phase !== 'playing') {
@@ -559,13 +595,7 @@ export function PodsSliceScreen() {
         captureException('feed_session_position_write_failed', error);
       }
     },
-    [
-      db,
-      fetchNextPage,
-      playback,
-      position,
-      session,
-    ],
+    [db, fetchNextPage, playback, position, session],
   );
 
   const togglePlayback = useCallback(() => {
@@ -695,22 +725,27 @@ export function PodsSliceScreen() {
     [position, selectPosition, togglePlayback],
   );
 
-  const refreshPodsSession = useCallback(async () => {
+  const replacePodsSession = useCallback(() => {
+    cancelUpNext();
+    return experienceRequested(refreshSession);
+  }, [cancelUpNext, experienceRequested, refreshSession]);
+  const commitPodsRefresh = useCallback(() => {
     playback.cancelUpNext();
     playback.pause();
     setPendingAutoplay(null);
-    setIsRefreshing(true);
-    try {
-      await experienceRequested(refreshSession);
-      setHasNewContent(false);
-      hapticSuccess();
-    } catch (error) {
-      captureException('pods_session_refresh_failed', error);
-      hapticWarning();
-    } finally {
-      setIsRefreshing(false);
-    }
-  }, [playback, refreshSession, experienceRequested]);
+    setHasNewContent(false);
+    hapticSuccess();
+  }, [playback]);
+  const failPodsRefresh = useCallback((error: unknown) => {
+    captureException('pods_session_refresh_failed', error);
+    hapticWarning();
+  }, []);
+  const { refreshing: isRefreshing, refresh: refreshPodsSession } =
+    usePodsRefresh({
+      replace: replacePodsSession,
+      committed: commitPodsRefresh,
+      failed: failPodsRefresh,
+    });
 
   const checkForNewContent = useCallback(async () => {
     try {
@@ -722,6 +757,11 @@ export function PodsSliceScreen() {
       // A freshness check is advisory. Never disturb a readable frozen session
       // if it fails or its six-hour server snapshot has expired.
       captureException('pods_freshness_check_failed', error);
+      if (
+        error instanceof ApiError &&
+        [409, 410].includes(error.context.status ?? 0)
+      )
+        setHasNewContent(true);
     }
   }, [checkForFreshness]);
 
@@ -934,12 +974,7 @@ export function PodsSliceScreen() {
         return false;
       }
     },
-    [
-      db,
-      playback.currentTimeSeconds,
-      position,
-      session,
-    ],
+    [db, playback.currentTimeSeconds, position, session],
   );
 
   useEffect(() => {

@@ -14,6 +14,7 @@ export type EmitInput = {
   outcome?: RuxEvent['outcome'];
   journey_id?: string | null;
   content_id?: string | null;
+  feed_session_id?: string | null;
   story_id?: string | null;
   playback_type?: RuxEvent['playback_type'];
   measurements?: RuxMeasurements | null;

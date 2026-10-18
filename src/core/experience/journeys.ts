@@ -19,6 +19,7 @@ const elapsed = (start: number) =>
 interface Base {
   surface: RuxSurface;
   content_id?: string | null;
+  feed_session_id?: string | null;
   story_id?: string | null;
   playback_type?: RuxPlaybackType | null;
 }
@@ -84,7 +85,7 @@ function measured(
   };
 }
 export interface FeedLoadJourney {
-  rendered(contentId?: string): void;
+  rendered(contentId?: string, feedSessionId?: string): void;
   empty(): void;
   failed(failureClass?: RuxFailureClass): void;
   cancel(): void;
@@ -93,8 +94,9 @@ export function beginFeedLoad(surface: RuxSurface): FeedLoadJourney {
   const base: Base = { surface };
   const journey = measured('feed', base, 'feed_requested');
   return {
-    rendered: (id) => {
+    rendered: (id, feedSessionId) => {
       base.content_id = id;
+      base.feed_session_id = feedSessionId;
       journey.settle('success');
     },
     empty: () => journey.settle('empty'),

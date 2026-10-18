@@ -180,6 +180,7 @@ export interface RuxEvent {
   surface: RuxSurface;
   journey_id?: string | null; // uuid grouping one journey attempt
   content_id?: string | null; // optional uuid — failure top-N only, never rolled up
+  feed_session_id?: string | null; // CMS frozen-session UUID for exact Pods evidence
   story_id?: string | null;
   playback_type?: RuxPlaybackType | null;
   locale?: string | null;
